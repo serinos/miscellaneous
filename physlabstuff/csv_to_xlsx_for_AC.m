@@ -1,8 +1,8 @@
-% July 31 - Onur Serin
+% July 31 2019- Onur Serin
 % Converts csv output of oscillator to xlsx after dumping header, plots
 % in new window, used for AC
 % Filename: converted.xlsx; A --> Time, B --> Channel 1
-% Calculates difference in time for data points at 2 in pairs
+% Calculates fwhm for each spike
 
 clear
 csv_handler = fopen('tek0000.csv');
