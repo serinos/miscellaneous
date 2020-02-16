@@ -37,7 +37,7 @@ for sliding function, pad can be used to generate on-the-fly masks with
 sled config
 
 TODO: Initialize masks with Is and a0, they will be constant anyway and rewriting
-them each time into mask_apply() is cumbersome
+them each time into mask_apply() is cumbersome. Also add import&export function for data
 """
 
 import numpy as np
@@ -124,7 +124,7 @@ def mask_initialize(beam: tuple, shape: str, width: float, thickness: float):
         for i in range(dim):
             line = []
             for j in range(dim):
-                line.append(j%2)
+                line.append((i+j)%2)
             mask.append(line)
     else:
         return 0
