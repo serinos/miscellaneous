@@ -102,16 +102,16 @@ def mask_initialize(beam: tuple, shape: str, width: float, thickness: float):
         digital_thickness = int(np.ceil(thickness * beam[0]))  # Note: Ceiling thickness
         digital_width = int(np.ceil(width * beam[0]))
         pad_thickness = digital_thickness+digital_width
-        pad = np.vstack((np.ones((digital_thickness, dim)), np.zeros((digital_width, dim))))
+        pad = np.vstack((np.zeros((digital_thickness, dim)), np.ones((digital_width, dim))))
         pad_count = int(np.floor(dim/pad_thickness))
         mask = np.vstack(tuple(pad for i in range(pad_count)))
         if(dim%pad_thickness != 0):
             lines = []
             for i in range(1, ((dim%pad_thickness))+1):
                 if(i <= digital_thickness):
-                    lines.append(np.ones(dim))
-                else:
                     lines.append(np.zeros(dim))
+                else:
+                    lines.append(np.ones(dim))
             lines = np.array(lines)
             mask = np.vstack((mask, lines))
         else:
