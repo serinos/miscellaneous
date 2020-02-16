@@ -35,6 +35,9 @@ some analysis tools for it. Also code some fft funtion for some fun comparisons?
 TODO: Initiating masks with pandas datasheet of pad makes sense
 for sliding function, pad can be used to generate on-the-fly masks with
 sled config
+
+TODO: Initialize masks with Is and a0, they will be constant anyway and rewriting
+them each time into mask_apply() is cumbersome
 """
 
 import numpy as np
