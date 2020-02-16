@@ -126,6 +126,7 @@ def mask_initialize(beam: tuple, shape: str, width: float, thickness: float):
             for j in range(dim):
                 line.append((i+j)%2)
             mask.append(line)
+        pad = np.array([[1,0],[0,1]])
     else:
         return 0
 
