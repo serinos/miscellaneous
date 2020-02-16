@@ -1,6 +1,6 @@
 """
 (Respiratory Sound Diagnosis)
-Aug 18 - Merged version of plotter and database dumper scripts
+Aug 18 2019 - Merged version of plotter and database dumper scripts
 I could use part of the code again for some sound project maybe, so here it is...
 
 Takes in wav files in the same folder and patient_diagnosis.csv
