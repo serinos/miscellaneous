@@ -1,5 +1,5 @@
 % July 31 2019 - Onur Serin
-% Converts csv output of oscillator to xlsx after dumping header, plots
+% Converts csv output of oscilloscope to xlsx after dumping header, plots
 % in new window, used for AC
 % Filename: converted.xlsx; A--> Time, B --> Channel 1
 % Calculates fwhm for each spike
