@@ -1,9 +1,6 @@
 """
-Feb 16 2020 - OS
+Feb 17 2020 - OS
 Numerical Calculation Tool for Gaussian Beams Masked by Absorbant Surface
-
-***Dependencies: Note that for some functions, pandas >= 0.24.0 is needed as
-pandas.DataFrame.to_numpy is used
 
 ***Functions:
 
@@ -11,23 +8,29 @@ pandas.DataFrame.to_numpy is used
 wrt x,y coordinates with desired resolution, calculates only first quadrant
 values under y=x, then extends by symmetry to the rest of cartesian plane
 est flag determines over/underestimation, which can be used for error calcs
-Equation1: (2*P0/pi*w^2)*exp((-2*x^2 - 2*y^2)/w^2)
---mask_initialize(beam, shape params, thickness)  outputs mask with
+Equation1: I(x,y) = (2*P0/pi*w^2)*exp((-2*x^2 - 2*y^2)/w^2)
+--mask_initialize(beam, <shape params>, thickness, Is, a0)  outputs mask with
 desired shape for a given beam, for now only straight lines are to be implemented
---mask_apply(beam, mask, Is, a0)  Applies the following eqn:
+--mask_apply(beam, mask)  Applies the following eqn:
 Equation2: Inew := I - deltaI where deltaI := I*a0/(1 + I/Is)
 --integrate_for_power(beam)  Adds up I values in a beam matrix, finds P
 --change_P0(matrix)  Creates a new beam instance with different P0
 --plot_heat(matrix)  Plots heat graph of beam/mask
---mask_slide(beam, mask, steps, Is, a0)  Slides mask on beam, returns a tuple of beams.
+--mask_slide(beam, mask, steps)  Slides mask on beam, returns a tuple of beams.
+--mask_draw(pad, dim, crop)  Draws a mask by using the pad repetitively to achieve square matrix,
+edges have at least 1 and at most 2 extra pads to ensure proper working of mask_slide(), crop
+equals 1 returns cropped matrix to match dim
 
 ***Data structures:
 
 --beam: is a tuple (res, P0, w, dimensions, matrix, est)
 Note that matrix is in np.ndarray type
---mask: is a tuple (shape, width, thickness, dimensions,  matrix, pad)
-Note that pad is in pdDataFrame type, matrix in np.ndarray
+--mask: is a tuple (shape, width, thickness, dimensions,  matrix, pad, Is, a0)
+Note that pad, matrix in np.ndarray type
 --res: is int; e.g. res=2: 4 values per 1 unit square of Intensity plane
+
+**could refactor the structures to be more obj oriented; low priority
+also tuples are easier to follow than naming stuff
 
 TODO: After implementing mask initializer, write a sliding function and
 some analysis tools for it. Also code some fft funtion for some fun comparisons?
@@ -36,13 +39,13 @@ TODO: Initiating masks with pandas datasheet of pad makes sense
 for sliding function, pad can be used to generate on-the-fly masks with
 sled config
 
-TODO: Initialize masks with Is and a0, they will be constant anyway and rewriting
-them each time into mask_apply() is cumbersome. Also add import&export function for data
+TODO: Add import&export function for data
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas as pd
+
+class DimensionMismatch(Exception): pass
 
 
 def beam_initialize(res=1, threshold=(10**-5), P0=1, w=0, est=1):
@@ -97,48 +100,39 @@ def beam_initialize(res=1, threshold=(10**-5), P0=1, w=0, est=1):
     return (res, P0, w, cut*2, np.array(total_matrix), est)
 
 
-def mask_initialize(beam: tuple, shape: str, width: float, thickness: float):
-    # TODO: Rewrite with **kwargs, makes more sense
-    dim = beam[3]
+def mask_initialize(Is=1.0, a0=1.0, **kwargs):
     mask = []
+    try:
+        shape = kwargs.pop("shape")
+        beam = kwargs.pop("beam")
+    except:
+        print("Parameters not sufficient")
+    dim = beam[3]
+
     if(shape=="lines"):
+        width = kwargs.pop("width")
+        thickness = kwargs.pop("thickness")
         digital_thickness = int(np.ceil(thickness * beam[0]))  # Note: Ceiling thickness
         digital_width = int(np.ceil(width * beam[0]))
-        pad_thickness = digital_thickness+digital_width
         pad = np.vstack((np.zeros((digital_thickness, dim)), np.ones((digital_width, dim))))
-        pad_count = int(np.floor(dim/pad_thickness))
-        mask = np.vstack(tuple(pad for i in range(pad_count)))
-        if(dim%pad_thickness != 0):
-            lines = []
-            for i in range(1, ((dim%pad_thickness))+1):
-                if(i <= digital_thickness):
-                    lines.append(np.zeros(dim))
-                else:
-                    lines.append(np.ones(dim))
-            lines = np.array(lines)
-            mask = np.vstack((mask, lines))
-        else:
-            pass
+        mask = mask_draw(pad=pad, dim=dim, crop=True)
 
     elif(shape=="dots"):
-        for i in range(dim):
-            line = []
-            for j in range(dim):
-                line.append((i+j)%2)
-            mask.append(line)
         pad = np.array([[1,0],[0,1]])
+        mask = mask_draw(pad=pad, dim=dim, crop=True)
+
     else:
         return 0
 
-    pad = pd.DataFrame(pad)  # Maybe let this conversion be in mask_slide()
-    return((shape, width, thickness, dim, mask, pad))
+    return((shape, width, thickness, dim, mask, pad, Is, a0))
 
 
-def mask_apply(beam: tuple, mask: tuple, Is: float, a0: float):
+def mask_apply(beam: tuple, mask: tuple):
     if(beam[3] != mask[3]):
-        print("Dimensions do not match")
-        return 0
+        raise DimensionMismatch
     dim = beam[3]
+    Is = mask[6]
+    a0 = mask[7]
     new_matrix = []
     # Eqn2 will be iterated for cells that are passing through absorbant medium
     for i in range(dim):  # Traverses y coord.
@@ -152,7 +146,6 @@ def mask_apply(beam: tuple, mask: tuple, Is: float, a0: float):
 
         new_matrix.append(line)
 
-
     return((beam[0], beam[1], beam[2], dim, new_matrix, beam[5]))
 
 
@@ -160,9 +153,32 @@ def change_P0(P0: int, beam: tuple):
     pass  # TODO
 
 
-def mask_slide(beam: tuple, mask: tuple, steps: int, Is: float, a0: float):
-    pass  # TODO: Pad of mask will be used for generating derivative
-          # masks by translation
+def mask_slide(beam: tuple, mask: tuple, steps: int):  # NOT IMPLEMENTED YET
+    if(beam[3] != mask[3]):
+        raise DimensionMismatch
+    pad = mask[5]
+    dim = mask[3]
+    mask = mask_draw(pad=pad, dim=dim, crop=False)
+    # This surface will then be shifted wrt steps given, implemented for  x=y case
+    try:
+        step_size = pad.shape[0]//(steps-1)
+        if(step_size == 0):
+            step_size = 1
+    except ZeroDivisionError:
+        step_size = 1
+
+    return 0
+
+
+def mask_draw(pad: np.ndarray, dim: int, crop=True):
+    if(pad.shape[0] > dim):
+        raise DimensionMismatch
+    pad = np.vstack(tuple(pad for i in range((dim//pad.shape[0])+2)))
+    pad = np.hstack(tuple(pad for i in range((dim//pad.shape[1])+2)))
+    if(crop):
+        return pad[0:dim,0:dim]
+    else:
+        return pad
 
 
 def plot_heat(beam: tuple):  # Mind that beam_init. returns a tuple
@@ -171,7 +187,9 @@ def plot_heat(beam: tuple):  # Mind that beam_init. returns a tuple
     plt.show()
 
 
-def integrate_for_power(beam: tuple):  # TODO: Add a flag for calculating error range, also add support for lists of beams cooked up by mask_slide()
+def integrate_for_power(beam: tuple):
+    # TODO: Add a flag for calculating error range, also add support for lists of
+    # beams cooked up by mask_slide()
     dA = 1 / (beam[0]**2)  # dA for integration by adding up squares
     power = 0
     for i in beam[4]:
