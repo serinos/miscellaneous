@@ -21,6 +21,7 @@ edges have at least 1 and at most 2 extra pads to ensure proper working of mask_
 equals 1 returns cropped matrix to match dim
 
 TODO: Add import&export function for data
+TODO: Add different mask shapes
 """
 
 import numpy as np
@@ -40,7 +41,7 @@ class Beam:
         self.over_est = over_est
 
 class Mask:
-   def __init__(self, shape, width, thickness, dim, matrix, pad, Is, a0):
+    def __init__(self, shape, width, thickness, dim, matrix, pad, Is, a0):
         self.shape = shape
         self.width = width
         self.thickness = thickness
