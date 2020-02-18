@@ -22,6 +22,7 @@ equals 1 returns cropped matrix to match dim
 
 TODO: Add import&export function for data
 TODO: Add different mask shapes
+TODO: Change dim parameter into (x,y) tuple to allow nonsquare pads for mask drawing
 """
 
 import numpy as np
@@ -178,7 +179,7 @@ def mask_draw(pad: np.ndarray, dim: int, crop=True):
         return pad
 
 
-def plot_heat(beam: Beam):  # Mind that beam_init. returns a tuple
+def plot_heat(beam: Beam):
     plt.imshow(beam.matrix, cmap='viridis')
     plt.colorbar()
     plt.show()
