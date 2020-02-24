@@ -1,9 +1,7 @@
 """
 Feb 17 2020 - OS
 Numerical Calculation Tool for Gaussian Beams Masked by Absorbant Surface
-
 ***Functions:
-
 --beam_initialize(res, threshold, P0, w, over_est)  outputs a np.array matrix with I values
 wrt x,y coordinates with desired resolution, calculates only first quadrant
 values under y=x, then extends by symmetry to the rest of cartesian plane
@@ -12,21 +10,21 @@ Equation1: I(x,y) = (2*P0/pi*w^2)*exp((-2*x^2 - 2*y^2)/w^2)
 --mask_initialize(beam, <shape params>, thickness, Is, a0)  outputs mask with
 desired shape for a given beam, for now only straight lines are to be implemented
 --mask_apply(beam, mask)  Applies the following eqn:
-Equation2: Inew := I - deltaI where deltaI := I*a0/(1 + I/Is)
+Equation2: Inew := I - deltaI where deltaI := I*(aS + a0/(1 + I/Is))
 --integrate_for_power(beam)  Adds up I values in a beam matrix, finds P
 --plot_heat(beam or mask)  Plots heat graph of beam/mask
---mask_slide(beam, mask, steps)  Slides mask on beam, returns a tuple of beams.
+--mask_slide(beam, mask, stepsX, stepsY)  Slides mask on beam, returns a tuple of beams.
 --mask_draw(pad, dim, crop)  Draws a mask by using the pad repetitively to achieve square matrix,
 edges have at least 1 and at most 2 extra pads to ensure proper working of mask_slide(), crop
 equals 1 returns cropped matrix to match dim
-
 TODO: Add import&export function for data
 TODO: Add different mask shapes
-TODO: Change dim parameter into (x,y) tuple to allow nonsquare pads for mask drawing
+TODO: Multiprocessing cannot join threads without timeout for some reason, fix it
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
+from multiprocessing import Process, Queue, cpu_count
 
 
 class DimensionMismatch(Exception): pass
@@ -42,7 +40,7 @@ class Beam:
         self.over_est = over_est
 
 class Mask:
-    def __init__(self, shape, width, thickness, dim, matrix, pad, Is, a0):
+    def __init__(self, shape, width, thickness, dim, matrix, pad, Is, a0, aS):
         self.shape = shape
         self.width = width
         self.thickness = thickness
@@ -51,6 +49,7 @@ class Mask:
         self.pad = pad
         self.Is = Is
         self.a0 = a0
+        self.aS = aS
 
 
 def beam_initialize(res=1, threshold=(10**-5), P0=1, w=0, over_est=True):
@@ -105,7 +104,7 @@ def beam_initialize(res=1, threshold=(10**-5), P0=1, w=0, over_est=True):
     return Beam(res, P0, w, cut*2, np.array(total_matrix), over_est)
 
 
-def mask_initialize(Is=1.0, a0=1.0, **kwargs):
+def mask_initialize(Is=0.015, a0=0.01725, aS=0.00575, **kwargs):
     mask = []
     try:
         shape = kwargs.pop("shape")
@@ -113,23 +112,28 @@ def mask_initialize(Is=1.0, a0=1.0, **kwargs):
     except:
         print("Parameters not sufficient")
         raise UnsufficientParameters
+    try:
+        crop_flag = kwargs.pop("crop")
+    except:
+        crop_flag = True
 
     if(shape=="lines"):
         width = kwargs.pop("width")
         thickness = kwargs.pop("thickness")
         digital_thickness = int(np.ceil(thickness * beam.res))  # Note: Ceiling thickness
         digital_width = int(np.ceil(width * beam.res))
-        pad = np.vstack((np.zeros((digital_thickness, beam.dim)), np.ones((digital_width, beam.dim))))
-        mask = mask_draw(pad=pad, dim=beam.dim, crop=True)
+        square_len = digital_thickness + digital_width
+        pad = np.vstack((np.zeros((digital_thickness, square_len)), np.ones((digital_width, square_len))))
+        mask = mask_draw(pad=pad, dim=beam.dim, crop=crop_flag)
 
     elif(shape=="dots"):
         pad = np.array([[1,0],[0,1]])
-        mask = mask_draw(pad=pad, dim=beam.dim, crop=True)
+        mask = mask_draw(pad=pad, dim=beam.dim, crop=crop_flag)
 
     else:
         return 0
 
-    return Mask(shape, width, thickness, beam.dim, mask, pad, Is, a0)
+    return Mask(shape, width, thickness, mask.shape[0], mask, pad, Is, a0, aS)
 
 
 def mask_apply(beam: Beam, mask: Mask):
@@ -137,6 +141,7 @@ def mask_apply(beam: Beam, mask: Mask):
         raise DimensionMismatch
     Is = mask.Is
     a0 = mask.a0
+    aS = mask.aS
     new_matrix = []
     # Eqn2 will be iterated for cells that are passing through absorbant medium
     for i in range(beam.dim):  # Traverses y coord.
@@ -144,7 +149,7 @@ def mask_apply(beam: Beam, mask: Mask):
         for j in range(beam.dim):  # Traverses x coord
             value = beam.matrix[i][j]
             if(bool(mask.matrix[i][j]) & bool(value)):  # Only work on filled cells
-               line.append(value*(1-(a0/(1+(value/Is)))))
+               line.append(value*(1-(aS+(a0/(1+(value/Is))))))
             else:
                line.append(value)
 
@@ -153,19 +158,77 @@ def mask_apply(beam: Beam, mask: Mask):
     return Beam(beam.res, beam.P0, beam.w, beam.dim, new_matrix, beam.over_est)
 
 
-def mask_slide(beam: Beam, mask: Mask, steps: int):  # NOT IMPLEMENTED YET
-    if(beam.dim != mask.dim):
+def mask_slide(beam: Beam, mask: Mask, stepsX=0, stepsY=0):  # Pass cropless masks only
+    #  Multiprocessing does not work for some reason
+    pad_Y = mask.pad.shape[0]
+    pad_X = mask.pad.shape[1]
+    if((beam.dim > mask.dim) | ((stepsX == 0) & (stepsY == 0))):
         raise DimensionMismatch
-    mask = mask_draw(pad=mask.pad, dim=mask.dim, crop=False)
-    # This surface will then be shifted wrt steps given, implemented for  x=y case
     try:
-        step_size = mask.pad.shape[0]//(steps-1)
-        if(step_size == 0):
-            step_size = 1
-    except ZeroDivisionError:
-        step_size = 1
+        step_sizeY = pad_Y//(stepsY)
+        if(step_sizeY == 0):
+            step_sizeY = 1
+    except:
+        step_sizeY = 0
+    try:
+        step_sizeX = pad_X//(stepsX)
+        if(step_sizeX == 0):
+            step_sizeX = 1
+    except:
+        step_sizeX = 0
+    try:
+        slope = stepsY//stepsX
+    except:
+        slope = np.inf
 
-    return 0
+    configs = []  #  Config elements are tuples: (Y axis, X axis)
+    if(step_sizeX == 0):
+        configs = [(i,0) for i in range(0, pad_Y, step_sizeY)]
+    elif(step_sizeY == 0):
+        configs = [(0,i) for i in range(0, pad_X, step_sizeX)]
+    elif(step_sizeY > step_sizeX):
+        for i in range(0, pad_X, step_sizeX):
+            if(i*slope <= pad_Y):
+                configs.append((i*slope, i))
+            else:
+                break
+    else:
+        for i in range(0, pad_Y, step_sizeY):
+            if(i//slope <= pad_X):
+                configs.append((i, int(i//slope)))
+            else:
+                break
+
+    processes = []
+    q = Queue()
+    cpu = cpu_count()
+    ranger = (len(configs)//cpu)+1
+
+    for i in range(ranger):
+        for j in range(cpu):
+            try:
+                config = configs.pop()
+            except:
+                break
+            process = Process(target=_mask_apply, args=(q, config, beam, mask))
+            processes.append(process)
+            process.start()
+        for process in processes:
+            process.join(0.5)  # Dirty fix to force calculations, fix it later
+
+    returnee = []
+    for i in range(q.qsize()):
+        returnee.append(q.get())
+    returnee.sort()
+    return returnee
+
+def _mask_apply(q, config, beam, mask):  #Note that config[0]: Y axis
+    mask.matrix = mask.matrix[config[0]:(beam.dim + config[0]), config[1]:(beam.dim+config[1])]
+    mask.dim = beam.dim
+    beam = mask_apply(beam, mask)
+    index = config[0] + config[1]
+    beam_tuple = (index, beam)
+    q.put(beam_tuple)
 
 
 def mask_draw(pad: np.ndarray, dim: int, crop=True):
@@ -185,7 +248,7 @@ def plot_heat(beam: Beam):
     plt.show()
 
 
-def integrate_for_power(beam: tuple):
+def integrate_for_power(beam: Beam):
     # TODO: Add a flag for calculating error range, also add support for lists of
     # beams cooked up by mask_slide()
     dA = 1 / (beam.res**2)  # dA for integration by adding up squares
