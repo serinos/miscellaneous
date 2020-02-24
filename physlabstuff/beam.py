@@ -21,7 +21,9 @@ edges have at least 1 and at most 2 extra pads to ensure proper working of mask_
 equals 1 returns cropped matrix to match dim
 TODO: Add import&export function for data
 TODO: Add different mask shapes
-TODO: Multiprocessing cannot join threads without timeout for some reason, fix it
+TODO: Multiprocessing cannot join threads without timeout for some reason, fix it. At
+least write a timer to see how long one process takes, and then scale accordingly if
+there is no straightforward solution.
 """
 
 import numpy as np
