@@ -12,7 +12,9 @@ desired shape for a given beam, for now only straight lines are to be implemente
 --mask_apply(beam, mask)  Applies the following eqn:
 Equation2: Inew := I - deltaI where deltaI := I*(aS + a0/(1 + I/Is))
 --integrate_for_power(beam)  Adds up I values in a beam matrix, finds P
+--multi_integrate_for_power(beamlist)  Yields a list of tuples in format (index, power)
 --plot_heat(beam or mask)  Plots heat graph of beam/mask
+--plot_power(beamlist)  Plots power graph of beams in a list
 --mask_slide(beam, mask, stepsX, stepsY)  Slides mask on beam, returns a tuple of beams.
 --mask_draw(pad, dim, crop)  Draws a mask by using the pad repetitively to achieve square matrix,
 edges have at least 1 and at most 2 extra pads to ensure proper working of mask_slide(), crop
@@ -214,13 +216,14 @@ def mask_slide(beam: Beam, mask: Mask, stepsX=0, stepsY=0):  # Pass cropless mas
             processes.append(process)
             process.start()
         for process in processes:
-            process.join(0.5)  # Dirty fix to force calculations, fix it later
+            process.join(0.3)  # Dirty fix to force calculations, fix it later; increase to allow more time for calcs
 
     returnee = []
     for i in range(q.qsize()):
         returnee.append(q.get())
     returnee.sort()
     return returnee
+
 
 def _mask_apply(q, config, beam, mask):  #Note that config[0]: Y axis
     mask.matrix = mask.matrix[config[0]:(beam.dim + config[0]), config[1]:(beam.dim+config[1])]
@@ -257,3 +260,42 @@ def integrate_for_power(beam: Beam):
         for j in i:
             power += (dA * j)
     return np.float32(power)
+
+
+def _integrate_for_power(q, index, beam):
+    dA = 1 / (beam.res**2)
+    power = 0
+    for i in beam.matrix:
+        for j in i:
+            power += (dA * j)
+    q.put((index, np.float32(power)))
+
+
+def multi_integrate_for_power(beamlist):
+    beamlist = beamlist.copy()
+    processes = []
+    q = Queue()
+    cpu = cpu_count()
+    ranger = (len(beamlist)//cpu)+1
+
+    for i in range(ranger):
+        for j in range(cpu):
+            try:
+                config = beamlist.pop()
+            except:
+                break
+            process = Process(target=_integrate_for_power, args=(q, config[0], config[1]))
+            processes.append(process)
+            process.start()
+        for process in processes:
+            process.join(0.3)  # Dirty fix to force calculations, fix it later; increase to allow more time for calcs
+
+    returnee = []
+    for i in range(q.qsize()):
+        returnee.append(q.get())
+    returnee.sort()
+    return returnee
+
+def plot_power(powerlist):
+    plt.plot([i for i in range(len(powerlist))],[j[1] for j in powerlist])
+    plt.show()
