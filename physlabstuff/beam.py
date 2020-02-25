@@ -21,13 +21,12 @@ edges have at least 1 and at most 2 extra pads to ensure proper working of mask_
 equals 1 returns cropped matrix to match dim
 TODO: Add import&export function for data
 TODO: Add different mask shapes
-TODO: Multiprocessing cannot join threads without timeout for some reason, fix it. At
-least write a timer to see how long one process takes, and then scale accordingly if
-there is no straightforward solution.
+TODO: Multiprocessing cannot join threads without timeout for some reason, fix it
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
+from time import time
 from multiprocessing import Process, Queue, cpu_count
 
 
@@ -207,6 +206,14 @@ def mask_slide(beam: Beam, mask: Mask, stepsX=0, stepsY=0):  # Pass cropless mas
     q = Queue()
     cpu = cpu_count()
     ranger = (len(configs)//cpu)+1
+    #Timeout fix for process.join, processes will terminate after sufficient time
+    timeout = time()
+    _ = mask_apply(beam=beam, mask=Mask(mask.shape, mask.width, mask.thickness, beam.dim,\
+    mask.matrix[0:beam.dim, 0:beam.dim], mask.pad, mask.Is, mask.a0, mask.aS))
+    timeout = time() - timeout + 0.02  #  Too much time, try to lower it
+    print(f"Best case: {timeout * ranger} seconds")  #  Not precise at all...
+    del(_)
+    ###
 
     for i in range(ranger):
         for j in range(cpu):
@@ -218,7 +225,7 @@ def mask_slide(beam: Beam, mask: Mask, stepsX=0, stepsY=0):  # Pass cropless mas
             processes.append(process)
             process.start()
         for process in processes:
-            process.join(0.3)  # Dirty fix to force calculations, fix it later; increase to allow more time for calcs
+            process.join(timeout)  # Dirty fix to force calculations
 
     returnee = []
     for i in range(q.qsize()):
@@ -274,6 +281,12 @@ def _integrate_for_power(q, index, beam):
 
 
 def multi_integrate_for_power(beamlist):
+    #Timeout fix for process.join, processes will terminate after sufficient time
+    timeout = time()
+    integrate_for_power(beam=beamlist[0][1])
+    timeout = time() - timeout + 0.02
+    print(f"Best case: {timeout * ((len(beamlist)//cpu_count())+1)} seconds")
+    ###
     beamlist = beamlist.copy()
     processes = []
     q = Queue()
@@ -290,7 +303,7 @@ def multi_integrate_for_power(beamlist):
             processes.append(process)
             process.start()
         for process in processes:
-            process.join(0.3)  # Dirty fix to force calculations, fix it later; increase to allow more time for calcs
+            process.join(timeout)  # Dirty fix to force calculations
 
     returnee = []
     for i in range(q.qsize()):
