@@ -1,27 +1,28 @@
 """
 Feb 17 2020 - OS
-Numerical Calculation Tool for Gaussian Beams Masked by Absorbant Surface
+Numerical Calculation Tool for Gaussian Beams Masked by Semi-ablated Absorbant Surface
+
 ***Functions:
---beam_initialize(res, threshold, P0, w, over_est)  outputs a np.array matrix with I values
+-- beam_initialize(res, threshold, Ep, w, over_est)  outputs a np.array matrix with I values
 wrt x,y coordinates with desired resolution, calculates only first quadrant
 values under y=x, then extends by symmetry to the rest of cartesian plane
 over_est flag determines over/underestimation, which can be used for error calcs
-Equation1: I(x,y) = (2*P0/pi*w^2)*exp((-2*x^2 - 2*y^2)/w^2)
---mask_initialize(beam, <shape params>, thickness, Is, a0)  outputs mask with
+Equation1: J(x,y) = (2*Ep/pi*w^2)*exp((-2*x^2 - 2*y^2)/w^2)
+-- mask_initialize(beam, <shape params>, thickness, Is, a0)  outputs mask with
 desired shape for a given beam, for now only straight lines are to be implemented
---mask_apply(beam, mask)  Applies the following eqn:
-Equation2: Inew := I - deltaI where deltaI := I*(aS + a0/(1 + I/Is))
---integrate_for_power(beam)  Adds up I values in a beam matrix, finds P
---multi_integrate_for_power(beamlist)  Yields a list of tuples in format (index, power)
---plot_heat(beam or mask)  Plots heat graph of beam/mask
---plot_power(beamlist)  Plots power graph of beams in a list
---mask_slide(beam, mask, stepsX, stepsY)  Slides mask on beam, returns a tuple of beams.
---mask_draw(pad, dim, crop)  Draws a mask by using the pad repetitively to achieve square matrix,
+-- mask_apply(beam, mask)  Applies the following eqn:
+Equation2: Jnew := J - deltaJ where deltaJ := J*(aS + a0/(1 + J/Js))
+-- integrate_for_power(beam)  Adds up J values in a beam matrix, finds Ep
+-- multi_integrate_for_Ep (beamlist)  Yields a list of tuples in format (index, power)
+-- plot_heat(beam or mask)  Plots heat graph of beam/mask
+-- plot_power(beamlist)  Plots power graph of beams in a list
+-- mask_slide(beam, mask, stepsX, stepsY)  Slides mask on beam, returns a tuple of beams.
+-- mask_draw(pad, dim, crop)  Draws a mask by using the pad repetitively to achieve square matrix,
 edges have at least 1 and at most 2 extra pads to ensure proper working of mask_slide(), crop
 equals 1 returns cropped matrix to match dim
-TODO: Add import&export function for data
-TODO: Add different mask shapes
-TODO: Multiprocessing cannot join threads without timeout for some reason, fix it
+
+TODO: Add different mask shapes after zebra pattern is understood satisfactorily
+TODO: Multiprocessing cannot join threads without timeout for some reason, fix it by rewrite?
 """
 
 import numpy as np
@@ -34,41 +35,41 @@ class DimensionMismatch(Exception): pass
 class UnsufficientParameters(Exception): pass
 
 class Beam:
-    def __init__(self, res, P0, w, dim, matrix, over_est):
+    def __init__(self, res, Ep, w, dim, matrix, over_est):
         self.res = res
-        self.P0 = P0
+        self.Ep = Ep
         self.w = w
         self.dim = dim
         self.matrix = matrix
         self.over_est = over_est
 
 class Mask:
-    def __init__(self, shape, width, thickness, dim, matrix, pad, Is, a0, aS):
+    def __init__(self, shape, width, thickness, dim, matrix, pad, Js, a0, aS):
         self.shape = shape
         self.width = width
         self.thickness = thickness
         self.dim = dim
         self.matrix = matrix
         self.pad = pad
-        self.Is = Is
+        self.Js = Js
         self.a0 = a0
         self.aS = aS
 
 
-def beam_initialize(res=1, threshold=(10**-5), P0=1, w=0, over_est=True):
+def beam_initialize(res=1, threshold=(10**-5), Ep=1, w=0, over_est=True):
     if(w==0):
         raise DimensionMismatch
     w2 = w**2
     #  By threshold, calculate how many cells will be traversed, assign to
     #  variable "cut", uses Eqn1 to find x and assign int wrt res. (y=0)
     #  For cut, over_est=True always to ensure comparability with over_est=False matrices
-    cut = int(np.ceil(res*np.sqrt(((w2)*np.log(2*P0/(np.pi*(w2)*threshold)))/2)))
+    cut = int(np.ceil(res*np.sqrt(((w2)*np.log(2*Ep/(np.pi*(w2)*threshold)))/2)))
     #  Iterate cut times for first line, then use sin function to truncate
     #  after threshold and fill in zeros, will traverse the first quadrant
     #  below y=x and used for filling above y=x,first quad data is put in a list
     #  Over/underestimation fix is done after first quadrant is calculated
     #  with overestimation
-    const = np.float32(2*P0/(np.pi * w2))  # For later use in value assigning with Eqn1
+    const = np.float32(2*Ep/(np.pi * w2))  # For later use in value assigning with Eqn1
     y_counter = 0
     first_quad = []
     for i in range(cut):
@@ -104,10 +105,10 @@ def beam_initialize(res=1, threshold=(10**-5), P0=1, w=0, over_est=True):
     for i in reversed(range(cut)):  # Upper quads used for lower quads
         total_matrix.append(total_matrix[i])
 
-    return Beam(res, P0, w, cut*2, np.array(total_matrix), over_est)
+    return Beam(res, Ep, w, cut*2, np.array(total_matrix), over_est)
 
 
-def mask_initialize(Is=0.015, a0=0.01725, aS=0.00575, **kwargs):
+def mask_initialize(Js=0.015, a0=0.01725, aS=0.00575, **kwargs):  # Js = 0.015 J/cm2
     mask = []
     try:
         shape = kwargs.pop("shape")
@@ -136,13 +137,13 @@ def mask_initialize(Is=0.015, a0=0.01725, aS=0.00575, **kwargs):
     else:
         return 0
 
-    return Mask(shape, width, thickness, mask.shape[0], mask, pad, Is, a0, aS)
+    return Mask(shape, width, thickness, mask.shape[0], mask, pad, Js, a0, aS)
 
 
 def mask_apply(beam: Beam, mask: Mask):
     if(beam.dim != mask.dim):
         raise DimensionMismatch
-    Is = mask.Is
+    Js = mask.Js
     a0 = mask.a0
     aS = mask.aS
     new_matrix = []
@@ -152,13 +153,13 @@ def mask_apply(beam: Beam, mask: Mask):
         for j in range(beam.dim):  # Traverses x coord
             value = beam.matrix[i][j]
             if(bool(mask.matrix[i][j]) & bool(value)):  # Only work on filled cells
-               line.append(value*(1-(aS+(a0/(1+(value/Is))))))
+               line.append(value*(1-(aS+(a0/(1+(value/Js))))))
             else:
                line.append(value)
 
         new_matrix.append(line)
 
-    return Beam(beam.res, beam.P0, beam.w, beam.dim, new_matrix, beam.over_est)
+    return Beam(beam.res, beam.Ep, beam.w, beam.dim, new_matrix, beam.over_est)
 
 
 def mask_slide(beam: Beam, mask: Mask, stepsX=0, stepsY=0):  # Pass cropless masks only
@@ -209,7 +210,7 @@ def mask_slide(beam: Beam, mask: Mask, stepsX=0, stepsY=0):  # Pass cropless mas
     #Timeout fix for process.join, processes will terminate after sufficient time
     timeout = time()
     _ = mask_apply(beam=beam, mask=Mask(mask.shape, mask.width, mask.thickness, beam.dim,\
-    mask.matrix[0:beam.dim, 0:beam.dim], mask.pad, mask.Is, mask.a0, mask.aS))
+    mask.matrix[0:beam.dim, 0:beam.dim], mask.pad, mask.Js, mask.a0, mask.aS))
     timeout = time() - timeout + 0.02  #  Too much time, try to lower it
     print(f"Best case: {timeout * ranger} seconds")  #  Not precise at all...
     del(_)
