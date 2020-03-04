@@ -1,7 +1,6 @@
 """
 Feb 17 2020 - OS
 Numerical Calculation Tool for Gaussian Beams Masked by Semi-ablated Absorbant Surface
-
 ***Functions:
 -- beam_initialize(res, threshold, Ep, w, over_est)  outputs a np.array matrix with I values
 wrt x,y coordinates with desired resolution, calculates only first quadrant
@@ -11,7 +10,7 @@ Equation1: J(x,y) = (2*Ep/pi*w^2)*exp((-2*x^2 - 2*y^2)/w^2)
 -- mask_initialize(beam, <shape params>, thickness, Is, a0)  outputs mask with
 desired shape for a given beam, for now only straight lines are to be implemented
 -- mask_apply(beam, mask)  Applies the following eqn:
-Equation2: Jnew := J - deltaJ where deltaJ := J*(aS + a0/(1 + J/Js))
+Equation2: Jnew := J - deltaJ where deltaJ := J*(a0 + aS/(1 + J/Js))
 -- integrate_for_energy(beam)  Adds up J values in a beam matrix, finds Ep
 -- multi_integrate_for_energy (beamlist)  Yields a list of tuples in format (index, energy)
 -- plot_heat(beam or mask)  Plots heat graph of beam/mask
@@ -20,12 +19,10 @@ Equation2: Jnew := J - deltaJ where deltaJ := J*(aS + a0/(1 + J/Js))
 -- mask_draw(pad, dim, crop)  Draws a mask by using the pad repetitively to achieve square matrix,
 edges have at least 1 and at most 2 extra pads to ensure proper working of mask_slide(), crop
 equals 1 returns cropped matrix to match dim
-
 TODO: Add different mask shapes after zebra pattern is understood satisfactorily
 TODO: Multiprocessing cannot join threads without timeout for some reason, fix it by rewrite?
-
 Units: Think of x resolution unit as resolving 1/x um, enter w0 in um
-       Default Js=0.00015 uJ/um2, Ep=0.04 uJ, res=1, a0=0.01725, aS=0.00575, eval threshold of beam=10^-10uJ
+       Default Js=0.00000015 uJ/um2, Ep=0.04 uJ, res=1, a0=0.01725, aS=0.00575, eval threshold of beam=10^-10uJ
 """
 
 import numpy as np
@@ -59,7 +56,7 @@ class Mask:
         self.aS = aS
 
 
-def beam_initialize(res=1, threshold=(10**-10), Ep=0.04, w=0, over_est=True):
+def beam_initialize(res=1, threshold=(10**-8), Ep=0.04, w=0, over_est=True):
     if(w==0):
         raise DimensionMismatch
     w2 = w**2
@@ -111,7 +108,7 @@ def beam_initialize(res=1, threshold=(10**-10), Ep=0.04, w=0, over_est=True):
     return Beam(res, Ep, w, cut*2, np.array(total_matrix), over_est)
 
 
-def mask_initialize(Js=0.00015, a0=0.01725, aS=0.00575, **kwargs):
+def mask_initialize(Js=0.00000015, a0=0.01725, aS=0.00575, **kwargs):
     mask = []
     try:
         shape = kwargs.pop("shape")
@@ -156,7 +153,7 @@ def mask_apply(beam: Beam, mask: Mask):
         for j in range(beam.dim):  # Traverses x coord
             value = beam.matrix[i][j]
             if(bool(mask.matrix[i][j]) & bool(value)):  # Only work on filled cells
-               line.append(value*(1-(aS+(a0/(1+(value/Js))))))
+               line.append(value*(1-(a0+(aS/(1+(value/Js))))))
             else:
                line.append(value)
 
