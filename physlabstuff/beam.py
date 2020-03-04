@@ -12,10 +12,10 @@ Equation1: J(x,y) = (2*Ep/pi*w^2)*exp((-2*x^2 - 2*y^2)/w^2)
 desired shape for a given beam, for now only straight lines are to be implemented
 -- mask_apply(beam, mask)  Applies the following eqn:
 Equation2: Jnew := J - deltaJ where deltaJ := J*(aS + a0/(1 + J/Js))
--- integrate_for_power(beam)  Adds up J values in a beam matrix, finds Ep
--- multi_integrate_for_Ep (beamlist)  Yields a list of tuples in format (index, power)
+-- integrate_for_energy(beam)  Adds up J values in a beam matrix, finds Ep
+-- multi_integrate_for_energy (beamlist)  Yields a list of tuples in format (index, energy)
 -- plot_heat(beam or mask)  Plots heat graph of beam/mask
--- plot_power(beamlist)  Plots power graph of beams in a list
+-- plot_energy(beamlist)  Plots energy graph of beams in a list
 -- mask_slide(beam, mask, stepsX, stepsY)  Slides mask on beam, returns a tuple of beams.
 -- mask_draw(pad, dim, crop)  Draws a mask by using the pad repetitively to achieve square matrix,
 edges have at least 1 and at most 2 extra pads to ensure proper working of mask_slide(), crop
@@ -23,6 +23,9 @@ equals 1 returns cropped matrix to match dim
 
 TODO: Add different mask shapes after zebra pattern is understood satisfactorily
 TODO: Multiprocessing cannot join threads without timeout for some reason, fix it by rewrite?
+
+Units: Think of x resolution unit as resolving 1/x um, enter w0 in um
+       Default Js=0.00015 uJ/um2, Ep=0.04 uJ, res=1, a0=0.01725, aS=0.00575, eval threshold of beam=10^-10uJ
 """
 
 import numpy as np
@@ -56,7 +59,7 @@ class Mask:
         self.aS = aS
 
 
-def beam_initialize(res=1, threshold=(10**-5), Ep=1, w=0, over_est=True):
+def beam_initialize(res=1, threshold=(10**-10), Ep=0.04, w=0, over_est=True):
     if(w==0):
         raise DimensionMismatch
     w2 = w**2
@@ -108,7 +111,7 @@ def beam_initialize(res=1, threshold=(10**-5), Ep=1, w=0, over_est=True):
     return Beam(res, Ep, w, cut*2, np.array(total_matrix), over_est)
 
 
-def mask_initialize(Js=0.015, a0=0.01725, aS=0.00575, **kwargs):  # Js = 0.015 J/cm2
+def mask_initialize(Js=0.00015, a0=0.01725, aS=0.00575, **kwargs):
     mask = []
     try:
         shape = kwargs.pop("shape")
@@ -261,30 +264,30 @@ def plot_heat(beam: Beam):
     plt.show()
 
 
-def integrate_for_power(beam: Beam):
+def integrate_for_energy(beam: Beam):
     # TODO: Add a flag for calculating error range, also add support for lists of
     # beams cooked up by mask_slide()
     dA = 1 / (beam.res**2)  # dA for integration by adding up squares
-    power = 0
+    energy = 0
     for i in beam.matrix:
         for j in i:
-            power += (dA * j)
-    return np.float32(power)
+            energy += (dA * j)
+    return np.float32(energy)
 
 
-def _integrate_for_power(q, index, beam):
+def _integrate_for_energy(q, index, beam):
     dA = 1 / (beam.res**2)
-    power = 0
+    energy = 0
     for i in beam.matrix:
         for j in i:
-            power += (dA * j)
-    q.put((index, np.float32(power)))
+            energy += (dA * j)
+    q.put((index, np.float32(energy)))
 
 
-def multi_integrate_for_power(beamlist):
+def multi_integrate_for_energy(beamlist):
     #Timeout fix for process.join, processes will terminate after sufficient time
     timeout = time()
-    integrate_for_power(beam=beamlist[0][1])
+    integrate_for_energy(beam=beamlist[0][1])
     timeout = time() - timeout + 0.02
     print(f"Best case: {timeout * ((len(beamlist)//cpu_count())+1)} seconds")
     ###
@@ -300,7 +303,7 @@ def multi_integrate_for_power(beamlist):
                 config = beamlist.pop()
             except:
                 break
-            process = Process(target=_integrate_for_power, args=(q, config[0], config[1]))
+            process = Process(target=_integrate_for_energy, args=(q, config[0], config[1]))
             processes.append(process)
             process.start()
         for process in processes:
@@ -312,6 +315,6 @@ def multi_integrate_for_power(beamlist):
     returnee.sort()
     return returnee
 
-def plot_power(powerlist):
-    plt.plot([i for i in range(len(powerlist))],[j[1] for j in powerlist])
+def plot_energy(energylist):
+    plt.plot([i for i in range(len(energylist))],[j[1] for j in energylist])
     plt.show()
