@@ -1,6 +1,7 @@
 """
-Feb 17 2020 - OS
+March 06 2020 - OS
 Numerical Calculation Tool for Gaussian Beams Masked by Semi-ablated Absorbant Surface
+
 ***Functions:
 -- beam_initialize(res, threshold, Ep, w, over_est)  outputs a np.array matrix with I values
 wrt x,y coordinates with desired resolution, calculates only first quadrant
@@ -16,11 +17,15 @@ Equation2: Jnew := J - deltaJ where deltaJ := J*(a0 + aS/(1 + J/Js))
 -- plot_heat(beam or mask)  Plots heat graph of beam/mask
 -- plot_energy(beamlist)  Plots energy graph of beams in a list
 -- mask_slide(beam, mask, stepsX, stepsY)  Slides mask on beam, returns a tuple of beams.
+-- mask_slide_iterator(beam, mask, stepsX, stepsY)  Slides mask on beam, yields tuples that have
+index and resulting beams one by one
 -- mask_draw(pad, dim, crop)  Draws a mask by using the pad repetitively to achieve square matrix,
 edges have at least 1 and at most 2 extra pads to ensure proper working of mask_slide(), crop
 equals 1 returns cropped matrix to match dim
+
 TODO: Add different mask shapes after zebra pattern is understood satisfactorily
 TODO: Multiprocessing cannot join threads without timeout for some reason, fix it by rewrite?
+
 Units: Think of x resolution unit as resolving 1/x um, enter w0 in um
        Default Js=0.00000015 uJ/um2, Ep=0.04 uJ, res=1, a0=0.01725, aS=0.00575, eval threshold of beam=10^-10uJ
 """
@@ -43,6 +48,9 @@ class Beam:
         self.matrix = matrix
         self.over_est = over_est
 
+    def copy(self):
+        return Beam(self.res, self.Ep, self.w, self.dim, self.matrix, self.over_est)
+
 class Mask:
     def __init__(self, shape, width, thickness, dim, matrix, pad, Js, a0, aS):
         self.shape = shape
@@ -54,6 +62,10 @@ class Mask:
         self.Js = Js
         self.a0 = a0
         self.aS = aS
+
+    def copy(self):
+        return Mask(self.shape, self.width, self.thickness, self.dim, self.matrix\
+                    , self.pad, self.Js, self.a0, self.aS)
 
 
 def beam_initialize(res=1, threshold=(10**-8), Ep=0.04, w=0, over_est=True):
@@ -124,7 +136,7 @@ def mask_initialize(Js=0.00000015, a0=0.01725, aS=0.00575, **kwargs):
     if(shape=="lines"):
         width = kwargs.pop("width")
         thickness = kwargs.pop("thickness")
-        digital_thickness = int(np.ceil(thickness * beam.res))  # Note: Ceiling thickness
+        digital_thickness = int(np.ceil(thickness * beam.res))  # Note: Ceiling the thickness
         digital_width = int(np.ceil(width * beam.res))
         square_len = digital_thickness + digital_width
         pad = np.vstack((np.zeros((digital_thickness, square_len)), np.ones((digital_width, square_len))))
@@ -148,7 +160,7 @@ def mask_apply(beam: Beam, mask: Mask):
     aS = mask.aS
     new_matrix = []
     # Eqn2 will be iterated for cells that are passing through absorbant medium
-    for i in range(beam.dim):  # Traverses y coord.
+    for i in range(beam.dim):  # Traverses y coord
         line = []
         for j in range(beam.dim):  # Traverses x coord
             value = beam.matrix[i][j]
@@ -163,57 +175,22 @@ def mask_apply(beam: Beam, mask: Mask):
 
 
 def mask_slide(beam: Beam, mask: Mask, stepsX=0, stepsY=0):  # Pass cropless masks only
-    #  Multiprocessing does not work for some reason
-    pad_Y = mask.pad.shape[0]
-    pad_X = mask.pad.shape[1]
-    if((beam.dim > mask.dim) | ((stepsX == 0) & (stepsY == 0))):
-        raise DimensionMismatch
-    try:
-        step_sizeY = pad_Y//(stepsY)
-        if(step_sizeY == 0):
-            step_sizeY = 1
-    except:
-        step_sizeY = 0
-    try:
-        step_sizeX = pad_X//(stepsX)
-        if(step_sizeX == 0):
-            step_sizeX = 1
-    except:
-        step_sizeX = 0
-    try:
-        slope = stepsY//stepsX
-    except:
-        slope = np.inf
-
-    configs = []  #  Config elements are tuples: (Y axis, X axis)
-    if(step_sizeX == 0):
-        configs = [(i,0) for i in range(0, pad_Y, step_sizeY)]
-    elif(step_sizeY == 0):
-        configs = [(0,i) for i in range(0, pad_X, step_sizeX)]
-    elif(step_sizeY > step_sizeX):
-        for i in range(0, pad_X, step_sizeX):
-            if(i*slope <= pad_Y):
-                configs.append((i*slope, i))
-            else:
-                break
-    else:
-        for i in range(0, pad_Y, step_sizeY):
-            if(i//slope <= pad_X):
-                configs.append((i, int(i//slope)))
-            else:
-                break
-
+    # Build matrix configurations of masks:
+    configs = _config_create(mask.pad.shape, beam.dim, mask.dim, stepsY, stepsX)
+    # Multiprocessing setup:
     processes = []
     q = Queue()
     cpu = cpu_count()
     ranger = (len(configs)//cpu)+1
-    #Timeout fix for process.join, processes will terminate after sufficient time
+    #Timeout fix for process.join, processes will terminate after sufficient time:
     timeout = time()
-    _ = mask_apply(beam=beam, mask=Mask(mask.shape, mask.width, mask.thickness, beam.dim,\
-    mask.matrix[0:beam.dim, 0:beam.dim], mask.pad, mask.Js, mask.a0, mask.aS))
+    mask_c = mask.copy()
+    mask_c.matrix = mask.matrix[0:beam.dim, 0:beam.dim]
+    _ = mask_apply(beam=beam, mask=mask_c)
     timeout = time() - timeout + 0.02  #  Too much time, try to lower it
     print(f"Best case: {timeout * ranger} seconds")  #  Not precise at all...
     del(_)
+    del(mask_c)
     ###
 
     for i in range(ranger):
@@ -226,21 +203,39 @@ def mask_slide(beam: Beam, mask: Mask, stepsX=0, stepsY=0):  # Pass cropless mas
             processes.append(process)
             process.start()
         for process in processes:
-            process.join(timeout)  # Dirty fix to force calculations
+            process.join(timeout)  # Timeouts if thread fails to shut down after sufficient time for calculations
 
     returnee = []
+
     for i in range(q.qsize()):
         returnee.append(q.get())
     returnee.sort()
     return returnee
 
 
-def _mask_apply(q, config, beam, mask):  #Note that config[0]: Y axis
-    mask.matrix = mask.matrix[config[0]:(beam.dim + config[0]), config[1]:(beam.dim+config[1])]
-    mask.dim = beam.dim
-    beam = mask_apply(beam, mask)
+def _mask_apply_iter(config, beam, mask):
+    #Note that config[0]: Y axis
+    mask_c = mask.copy()
+    beam_c = beam.copy()
+    mask_c.matrix = mask_c.matrix[config[0]:(beam_c.dim + config[0]), config[1]:(beam_c.dim+config[1])]
+    mask_c.dim = beam_c.dim
+    beam_c = mask_apply(beam_c, mask_c)
+    del(mask_c)
     index = config[0] + config[1]
-    beam_tuple = (index, beam)
+    beam_tuple = (index, beam_c)
+    return beam_tuple
+
+
+def _mask_apply(q, config, beam, mask):
+    #Note that config[0]: Y axis
+    mask_c = mask.copy()
+    beam_c = beam.copy()
+    mask_c.matrix = mask_c.matrix[config[0]:(beam_c.dim + config[0]), config[1]:(beam_c.dim+config[1])]
+    mask_c.dim = beam_c.dim
+    beam_c = mask_apply(beam_c, mask_c)
+    del(mask_c)
+    index = config[0] + config[1]
+    beam_tuple = (index, beam_c)
     q.put(beam_tuple)
 
 
@@ -282,7 +277,7 @@ def _integrate_for_energy(q, index, beam):
 
 
 def multi_integrate_for_energy(beamlist):
-    #Timeout fix for process.join, processes will terminate after sufficient time
+    # Timeout fix for process.join, processes will terminate after sufficient time
     timeout = time()
     integrate_for_energy(beam=beamlist[0][1])
     timeout = time() - timeout + 0.02
@@ -304,7 +299,7 @@ def multi_integrate_for_energy(beamlist):
             processes.append(process)
             process.start()
         for process in processes:
-            process.join(timeout)  # Dirty fix to force calculations
+            process.join(timeout)  # Timeouts if thread fails to shut down after sufficient time for calculations
 
     returnee = []
     for i in range(q.qsize()):
@@ -312,6 +307,58 @@ def multi_integrate_for_energy(beamlist):
     returnee.sort()
     return returnee
 
+
 def plot_energy(energylist):
     plt.plot([i for i in range(len(energylist))],[j[1] for j in energylist])
     plt.show()
+
+
+def mask_slide_iterator(beam: Beam, mask: Mask, stepsX=0, stepsY=0):  # Pass cropless masks only
+    # Build matrix configurations of masks:
+    configs = _config_create(mask.pad.shape, beam.dim, mask.dim, stepsY, stepsX)
+
+    for i in configs:
+        result = _mask_apply_iter(i, beam, mask)
+        yield result
+
+
+def _config_create(maskpadshape: tuple, beamdim: int, maskdim: int, stepsY: int, stepsX: int):
+    pad_Y = maskpadshape[0]
+    pad_X = maskpadshape[1]
+    if((beamdim > maskdim) | ((stepsX == 0) & (stepsY == 0))):
+        raise DimensionMismatch
+    try:
+        step_sizeY = pad_Y//(stepsY)
+        if(step_sizeY == 0):
+            step_sizeY = 1
+    except:
+        step_sizeY = 0
+    try:
+        step_sizeX = pad_X//(stepsX)
+        if(step_sizeX == 0):
+            step_sizeX = 1
+    except:
+        step_sizeX = 0
+    try:
+        slope = stepsY//stepsX
+    except:
+        slope = np.inf
+
+    configs = []  # Config elements are tuples: (Y axis, X axis)
+    if(step_sizeX == 0):
+        configs = [(i,0) for i in range(0, pad_Y, step_sizeY)]
+    elif(step_sizeY == 0):
+        configs = [(0,i) for i in range(0, pad_X, step_sizeX)]
+    elif(step_sizeY > step_sizeX):
+        for i in range(0, pad_X, step_sizeX):
+            if(i*slope <= pad_Y):
+                configs.append((i*slope, i))
+            else:
+                break
+    else:
+        for i in range(0, pad_Y, step_sizeY):
+            if(i//slope <= pad_X):
+                configs.append((i, int(i//slope)))
+            else:
+                break
+    return configs
