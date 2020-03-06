@@ -13,7 +13,7 @@ desired shape for a given beam, for now only straight lines are to be implemente
 -- mask_apply(beam, mask)  Applies the following eqn:
 Equation2: Jnew := J - deltaJ where deltaJ := J*(a0 + aS/(1 + J/Js))
 -- integrate_for_energy(beam)  Adds up J values in a beam matrix, finds Ep
--- multi_integrate_for_energy (beamlist)  Yields a list of tuples in format (index, energy)
+-- multi_integrate_for_energy(beamlist)  Yields a list of tuples in format (index, energy)
 -- plot_heat(beam or mask)  Plots heat graph of beam/mask
 -- plot_energy(beamlist)  Plots energy graph of beams in a list
 -- mask_slide(beam, mask, stepsX, stepsY)  Slides mask on beam, returns a tuple of beams.
@@ -28,6 +28,10 @@ TODO: Multiprocessing cannot join threads without timeout for some reason, fix i
 
 Units: Think of x resolution unit as resolving 1/x um, enter w0 in um
        Default Js=0.00000015 uJ/um2, Ep=0.04 uJ, res=1, a0=0.01725, aS=0.00575, eval threshold of beam=10^-10uJ
+
+Note: mask_slide() seems to have some issues on some computers regarding timeout, use mask_slide_iterator() on
+different threads and in loops to get the same calculations done with speed. Similarly, multi_integrate_for_energy()
+may be troublesome.
 """
 
 import numpy as np
