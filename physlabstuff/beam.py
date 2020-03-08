@@ -1,5 +1,5 @@
 """
-March 06 2020 - OS
+March 08 2020 - OS
 Numerical Calculation Tool for Gaussian Beams Masked by Semi-ablated Absorbant Surface
 
 ***Functions:
@@ -8,30 +8,26 @@ wrt x,y coordinates with desired resolution, calculates only first quadrant
 values under y=x, then extends by symmetry to the rest of cartesian plane
 over_est flag determines over/underestimation, which can be used for error calcs
 Equation1: J(x,y) = (2*Ep/pi*w^2)*exp((-2*x^2 - 2*y^2)/w^2)
--- mask_initialize(beam, <shape params>, thickness, Is, a0)  outputs mask with
-desired shape for a given beam, for now only straight lines are to be implemented
+-- mask_initialize(beam, <shape params>, thickness, Js, a0, aS, crop)  outputs mask with
+desired shape for a given beam, for now only straight lines are implemented, crop (True/False)
+yields cropped/uncropped masks
 -- mask_apply(beam, mask)  Applies the following eqn:
 Equation2: Jnew := J - deltaJ where deltaJ := J*(a0 + aS/(1 + J/Js))
 -- integrate_for_energy(beam)  Adds up J values in a beam matrix, finds Ep
 -- multi_integrate_for_energy(beamlist)  Yields a list of tuples in format (index, energy)
 -- plot_heat(beam or mask)  Plots heat graph of beam/mask
 -- plot_energy(beamlist)  Plots energy graph of beams in a list
--- mask_slide(beam, mask, stepsX, stepsY)  Slides mask on beam, returns a tuple of beams.
+-- mask_slide(beam, mask, stepsX, stepsY)  Slides mask on beam, returns a tuple of beams, use uncropped masks
 -- mask_slide_iterator(beam, mask, stepsX, stepsY)  Slides mask on beam, yields tuples that have
-index and resulting beams one by one
+index and resulting beams one by one, use uncropped masks
 -- mask_draw(pad, dim, crop)  Draws a mask by using the pad repetitively to achieve square matrix,
 edges have at least 1 and at most 2 extra pads to ensure proper working of mask_slide(), crop
 equals 1 returns cropped matrix to match dim
 
 TODO: Add different mask shapes after zebra pattern is understood satisfactorily
-TODO: Multiprocessing cannot join threads without timeout for some reason, fix it by rewrite?
 
-Units: Think of x resolution unit as resolving 1/x um, enter w0 in um
-       Default Js=0.00000015 uJ/um2, Ep=0.04 uJ, res=1, a0=0.01725, aS=0.00575, eval threshold of beam=10^-10uJ
-
-Note: mask_slide() seems to have some issues on some computers regarding timeout, use mask_slide_iterator() on
-different threads and in loops to get the same calculations done with speed. Similarly, multi_integrate_for_energy()
-may be troublesome.
+Units: Think of x resolution unit as resolving 1/x um, enter w in um
+       Defaults: Js=0.00000015 uJ/um2, Ep=0.04 uJ, res=1, a0=0.01725, aS=0.00575, eval threshold of beam=10^-10uJ
 """
 
 import numpy as np
@@ -149,6 +145,7 @@ def mask_initialize(Js=0.00000015, a0=0.01725, aS=0.00575, **kwargs):
     elif(shape=="dots"):
         pad = np.array([[1,0],[0,1]])
         mask = mask_draw(pad=pad, dim=beam.dim, crop=crop_flag)
+        width, thickness = 1, 1  # To conform to Mask class parameters
 
     else:
         return 0
