@@ -1,5 +1,5 @@
 """
-March 08 2020 - OS
+March 10 2020 - OS
 Numerical Calculation Tool for Gaussian Beams Masked by Semi-ablated Absorbant Surface
 
 ***Functions:
@@ -9,8 +9,8 @@ values under y=x, then extends by symmetry to the rest of cartesian plane
 over_est flag determines over/underestimation, which can be used for error calcs
 Equation1: J(x,y) = (2*Ep/pi*w^2)*exp((-2*x^2 - 2*y^2)/w^2)
 -- mask_initialize(beam, <shape params>, thickness, Js, a0, aS, crop)  outputs mask with
-desired shape for a given beam, for now only straight lines are implemented, crop (True/False)
-yields cropped/uncropped masks
+desired shape for a given beam, for now only straight lines and circles are implemented
+crop (True/False) yields cropped/uncropped masks
 -- mask_apply(beam, mask)  Applies the following eqn:
 Equation2: Jnew := J - deltaJ where deltaJ := J*(a0 + aS/(1 + J/Js))
 -- integrate_for_energy(beam)  Adds up J values in a beam matrix, finds Ep
@@ -24,16 +24,15 @@ index and resulting beams one by one, use uncropped masks
 edges have at least 1 and at most 2 extra pads to ensure proper working of mask_slide(), crop
 equals 1 returns cropped matrix to match dim
 
-TODO: Add different mask shapes after zebra pattern is understood satisfactorily
-
 Units: Think of x resolution unit as resolving 1/x um, enter w in um
        Defaults: Js=0.00000015 uJ/um2, Ep=0.04 uJ, res=1, a0=0.01725, aS=0.00575, eval threshold of beam=10^-10uJ
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
+from math import sqrt
 from time import time
 from multiprocessing import Process, Queue, cpu_count
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 class DimensionMismatch(Exception): pass
@@ -52,10 +51,8 @@ class Beam:
         return Beam(self.res, self.Ep, self.w, self.dim, self.matrix, self.over_est)
 
 class Mask:
-    def __init__(self, shape, width, thickness, dim, matrix, pad, Js, a0, aS):
+    def __init__(self, shape, dim, matrix, pad, Js, a0, aS):
         self.shape = shape
-        self.width = width
-        self.thickness = thickness
         self.dim = dim
         self.matrix = matrix
         self.pad = pad
@@ -64,11 +61,10 @@ class Mask:
         self.aS = aS
 
     def copy(self):
-        return Mask(self.shape, self.width, self.thickness, self.dim, self.matrix\
-                    , self.pad, self.Js, self.a0, self.aS)
+        return Mask(self.shape, self.dim, self.matrix, self.pad, self.Js, self.a0, self.aS)
 
 
-def beam_initialize(res=1, threshold=(10**-8), Ep=0.04, w=0, over_est=True):
+def beam_initialize(res=1, threshold=(10**-10), Ep=0.04, w=0, over_est=True):
     if(w==0):
         raise DimensionMismatch
     w2 = w**2
@@ -121,7 +117,6 @@ def beam_initialize(res=1, threshold=(10**-8), Ep=0.04, w=0, over_est=True):
 
 
 def mask_initialize(Js=0.00000015, a0=0.01725, aS=0.00575, **kwargs):
-    mask = []
     try:
         shape = kwargs.pop("shape")
         beam = kwargs.pop("beam")
@@ -142,15 +137,52 @@ def mask_initialize(Js=0.00000015, a0=0.01725, aS=0.00575, **kwargs):
         pad = np.vstack((np.zeros((digital_thickness, square_len)), np.ones((digital_width, square_len))))
         mask = mask_draw(pad=pad, dim=beam.dim, crop=crop_flag)
 
+    elif(shape=="circles"):
+        width = kwargs.pop("width")
+        thickness = kwargs.pop("thickness")
+        digital_thickness = int(np.ceil(thickness * beam.res))  # Note: Ceiling the thickness
+        digital_width = int(np.ceil(width * beam.res))
+        repet_len = digital_thickness + digital_width
+        # Will not use mask_draw(), pad is constructed for sliding reference, same pad with 'lines' case
+        pad = np.vstack((np.zeros((digital_thickness, repet_len)), np.ones((digital_width, repet_len))))
+        # Quarter circle will be drawn here, then extended to full
+        # Also remember that the beam matrices are always of even numbered x,y shape by construction
+        if crop_flag is True:
+            half_length = beam.dim//2
+        else:
+            half_length = (beam.dim//2)+int(np.ceil(repet_len/2))  # Uncropped length is defined here in a way
+        # that _config_create can calculate sliding offsets in a similar manner to 'lines' case
+        first_quad_mask = []
+        half_thickness = digital_thickness//2
+        for y in range(half_length):
+            tmp = []
+            for x in range(half_length):
+                r_fixed = sqrt(x**2 + y**2) - half_thickness
+                if((r_fixed % repet_len) >= digital_width):
+                    tmp.append(0)
+                else:
+                    tmp.append(1)
+            first_quad_mask.append(tmp)
+        # Now, constructing the total matrix from the first quadrant:
+        total_matrix = []
+        for i in range(half_length):  # 1st quad used for 2nd quad
+            total_line = []
+            for j in reversed(range(half_length)):
+                total_line.append(first_quad_mask[i][j])
+            total_matrix.append(total_line + first_quad_mask[i])
+        total_matrix.reverse()  # Fixing rotation problem
+        for i in reversed(range(half_length)):  # Upper quads used for lower quads
+            total_matrix.append(total_matrix[i])
+        mask = np.array(total_matrix)
+
     elif(shape=="dots"):
         pad = np.array([[1,0],[0,1]])
         mask = mask_draw(pad=pad, dim=beam.dim, crop=crop_flag)
-        width, thickness = 1, 1  # To conform to Mask class parameters
 
     else:
         return 0
 
-    return Mask(shape, width, thickness, mask.shape[0], mask, pad, Js, a0, aS)
+    return Mask(shape, mask.shape[0], mask, pad, Js, a0, aS)
 
 
 def mask_apply(beam: Beam, mask: Mask):
@@ -187,6 +219,7 @@ def mask_slide(beam: Beam, mask: Mask, stepsX=0, stepsY=0):  # Pass cropless mas
     timeout = time()
     mask_c = mask.copy()
     mask_c.matrix = mask.matrix[0:beam.dim, 0:beam.dim]
+    mask_c.dim = beam.dim
     _ = mask_apply(beam=beam, mask=mask_c)
     timeout = time() - timeout + 0.02  #  Too much time, try to lower it
     print(f"Best case: {timeout * ranger} seconds")  #  Not precise at all...
