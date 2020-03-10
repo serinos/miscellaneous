@@ -103,15 +103,7 @@ def beam_initialize(res=1, threshold=(10**-10), Ep=0.04, w=0, over_est=True):
             _ = first_quad[i].pop(0)
             first_quad[i].append(0)
     # Now, time for extending to other quadrants
-    total_matrix = []
-    for i in range(cut):  # 1st quad used for 2nd quad
-        total_line = []
-        for j in reversed(range(cut)):
-            total_line.append(first_quad[i][j])
-        total_matrix.append(total_line + first_quad[i])
-    total_matrix.reverse()  # Fixing rotation problem
-    for i in reversed(range(cut)):  # Upper quads used for lower quads
-        total_matrix.append(total_matrix[i])
+    total_matrix = _quadrant_expander(cut, first_quad)
 
     return Beam(res, Ep, w, cut*2, np.array(total_matrix), over_est)
 
@@ -164,16 +156,7 @@ def mask_initialize(Js=0.00000015, a0=0.01725, aS=0.00575, **kwargs):
                     tmp.append(1)
             first_quad_mask.append(tmp)
         # Now, constructing the total matrix from the first quadrant:
-        total_matrix = []
-        for i in range(half_length):  # 1st quad used for 2nd quad
-            total_line = []
-            for j in reversed(range(half_length)):
-                total_line.append(first_quad_mask[i][j])
-            total_matrix.append(total_line + first_quad_mask[i])
-        total_matrix.reverse()  # Fixing rotation problem
-        for i in reversed(range(half_length)):  # Upper quads used for lower quads
-            total_matrix.append(total_matrix[i])
-        mask = np.array(total_matrix)
+        mask = np.array(_quadrant_expander(half_length, first_quad_mask))
 
     elif(shape=="dots"):
         pad = np.array([[1,0],[0,1]])
@@ -396,3 +379,16 @@ def _config_create(maskpadshape: tuple, beamdim: int, maskdim: int, stepsY: int,
             else:
                 break
     return configs
+
+
+def _quadrant_expander(half_length: int, first_quad: list):
+    total_matrix = []
+    for i in range(half_length):  # 1st quad used for 2nd quad
+        total_line = []
+        for j in reversed(range(half_length)):
+            total_line.append(first_quad[i][j])
+        total_matrix.append(total_line + first_quad[i])
+    total_matrix.reverse()  # Fixing rotation problem
+    for i in reversed(range(half_length)):  # Upper quads used for lower quads
+        total_matrix.append(total_matrix[i])
+    return total_matrix
