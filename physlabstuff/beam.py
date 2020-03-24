@@ -23,6 +23,7 @@ index and resulting beams one by one, use uncropped masks
 -- mask_draw(pad, dim, crop)  Draws a mask by using the pad repetitively to achieve square matrix,
 edges have at least 1 and at most 2 extra pads to ensure proper working of mask_slide(), crop
 equals 1 returns cropped matrix to match dim
+-- mask_pc(mask)  Calculates the percentage of non-ablated graphene region over the totality of a given mask
 
 Units: Think of x resolution unit as resolving 1/x um, enter w in um
        Defaults: Js=0.00000015 uJ/um2, Ep=0.04 uJ, res=1, a0=0.01725, aS=0.00575, eval threshold of beam=10^-10uJ
@@ -392,3 +393,11 @@ def _quadrant_expander(half_length: int, first_quad: list):
     for i in reversed(range(half_length)):  # Upper quads used for lower quads
         total_matrix.append(total_matrix[i])
     return total_matrix
+
+
+def mask_pc(mask: Mask):
+       mask.res = 1  # integrate_for_energy() requires res value
+       pc = 100*integrate_for_energy(mask)/(mask.dim**2)  # Adds up 1s in the mask,
+       # and divides by total number of entries in its matrix to achieve pc of graphene
+       del(mask.res)
+       return pc
