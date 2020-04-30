@@ -12,7 +12,7 @@ Equation1: J(x,y) = (2*Ep/(pi*(w**2)))*exp((-2*(x**2) - 2*(y**2))/(w**2))
 Created beams are Gaussian, return type is Beam
 
 --beam_initfunc(res, length, Ep, w, func)  calculates a np.array matrix with dimensions
-[res*length, res*length] for a beam, can be used with arbitrary math functions passed through func parameter.
+(res*length + 1, res*length + 1) for a beam, can be used with arbitrary math functions passed through func parameter.
 Note that no sanitization is in place. Use beam_initialize() for fast generation of Gaussian beams.
 You may use the variable name "const" in your function instead of (2*Ep/(pi*(w**2)))
 The entry at the center of the matrix stands for (0,0) in x-y, +-1 index shift from center
