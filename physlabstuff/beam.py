@@ -11,7 +11,7 @@ Dimension of the matrix is determined by threshold value.
 Equation1: J(x,y) = (2*Ep/(pi*(w**2)))*exp((-2*(x**2) - 2*(y**2))/(w**2))
 Created beams are Gaussian, return type is Beam
 
---beam_initfunc(res, length, Ep, w, func)  calculates a np.array matrix with dimensions
+-- beam_initfunc(res, length, Ep, w, func)  calculates a np.array matrix with dimensions
 (res*length + 1, res*length + 1) for a beam, can be used with arbitrary math functions passed through func parameter.
 Note that no sanitization is in place. Use beam_initialize() for fast generation of Gaussian beams.
 You may use the variable name "const" in your function instead of (2*Ep/(pi*(w**2)))
@@ -41,16 +41,11 @@ Returns the emergent Beam
 -- mask_slide_iterator(beam, mask, stepsX, stepsY)  Slides mask on beam, yields tuples that have
 index and resulting beams one by one, use uncropped masks
 
--- mask_draw(pad, dim, crop)  Draws a mask by using the pad repetitively to achieve square matrix,
-edges have at least 1 and at most 2 extra pads to ensure proper working of mask_slide(), crop
-equals 1 returns cropped matrix to match dim
-
 -- mask_pc(mask)  Calculates the percentage of non-ablated graphene region over the totality of a given mask
 
 Units: Think of x resolution unit as resolving 1/x um, enter w in um
        Defaults: Js=0.00000015 uJ/um2, Ep=0.04 uJ, res=1, a0=0.01725, aS=0.00575, eval threshold of beam=10^-10uJ
 
-# TODO: Add centralizer method for masks
 """
 
 from math import sqrt
@@ -87,9 +82,6 @@ class Mask:
 
     def copy(self):
         return Mask(self.shape, self.dim, self.matrix, self.pad, self.Js, self.a0, self.aS, self.res)
-
-    def centralize(self):
-        pass  #TODO: Add centralization for masks
 
 
 def beam_initialize(res=1, threshold=(10**-10), Ep=0.04, w=0, over_est=True):
@@ -149,13 +141,13 @@ def beam_initfunc(res=1, length=0, Ep=0.04, w=0, func="0"):
     edge_neg = -length/2
     edge_pos = (1/res)-edge_neg
     step = 1/res
-    for x in np.arange(edge_neg,edge_pos,step):
+    for y in np.arange(edge_neg,edge_pos,step):
         x_traversal = []
-        for y in np.arange(edge_neg,edge_pos,step):
+        for x in np.arange(edge_neg,edge_pos,step):
             x_traversal.append(eval(func))
         total_matrix.append(x_traversal)
 
-    total_matrix = np.array(total_matrix)
+    total_matrix = np.array(total_matrix)  # Mind (y,x) convention
     return Beam(res, Ep, w, total_matrix.shape[0], total_matrix)
 
 
@@ -178,7 +170,7 @@ def mask_initialize(Js=0.00000015, a0=0.01725, aS=0.00575, **kwargs):
         digital_width = int(np.ceil(width * beam.res))
         square_len = digital_thickness + digital_width
         pad = np.vstack((np.zeros((digital_thickness, square_len)), np.ones((digital_width, square_len))))
-        mask = mask_draw(pad=pad, dim=beam.dim, crop=crop_flag)
+        mask = _mask_drawlines(pad=pad, dim=beam.dim, crop=crop_flag)
 
     elif shape=="circles":
         width = kwargs.pop("width")
@@ -186,7 +178,7 @@ def mask_initialize(Js=0.00000015, a0=0.01725, aS=0.00575, **kwargs):
         digital_thickness = int(np.ceil(thickness * beam.res))  # Note: Ceiling the thickness
         digital_width = int(np.ceil(width * beam.res))
         repet_len = digital_thickness + digital_width
-        # Will not use mask_draw(), pad is constructed for sliding reference, same pad with 'lines' case
+        # Will not use _mask_drawlines() ofc, pad is constructed for sliding reference, same pad with 'lines' case
         pad = np.vstack((np.zeros((digital_thickness, repet_len)), np.ones((digital_width, repet_len))))
         # Quarter circle will be drawn here, then extended to full
         # Also remember that the beam matrices are always of even numbered x,y shape by construction
@@ -211,7 +203,7 @@ def mask_initialize(Js=0.00000015, a0=0.01725, aS=0.00575, **kwargs):
 
     elif shape=="dots":
         pad = np.array([[1,0],[0,1]])
-        mask = mask_draw(pad=pad, dim=beam.dim, crop=crop_flag)
+        mask = _mask_drawlines(pad=pad, dim=beam.dim, crop=crop_flag)
 
     else:
         return 0
@@ -307,13 +299,26 @@ def _mask_apply(q, config, beam, mask):
     q.put(beam_tuple)
 
 
-def mask_draw(pad: np.ndarray, dim: int, crop=True):
+def _mask_drawlines(pad: np.ndarray, dim: int, crop=True):
+    # Draws a mask by using the pad repetitively to achieve a square matrix,
+    # edges have at least 1 and at most 2 extra pads to ensure proper working of mask_slide()
+    # crop=1 returns cropped matrix to match dim
     if pad.shape[0] > dim:
         raise DimensionMismatch
+    pad_rat = pad[0:,0].sum()/pad.shape[0]
     pad = np.vstack(tuple(pad for i in range((dim//pad.shape[0])+2)))
     pad = np.hstack(tuple(pad for i in range((dim//pad.shape[1])+2)))
-    if crop:
-        return pad[0:dim,0:dim]
+    if crop is True:
+        legroom = pad.shape[0] - dim  # Will be used to traverse the matrix to find the best place to crop
+                                      # so that the resulting one is closest in masking percentage
+                                      # Will only consider y axis for pc calculations in _mask_drawlines
+        best = 0
+        score = 1
+        for i in range(legroom):
+            if abs(pad[i:dim+i,0].sum()/dim - pad_rat) < score:
+                score = abs(pad[i:dim+i,0].sum()/dim - pad_rat)
+                best = i
+        return pad[best:dim+best,0:dim]
     else:
         return pad
 
