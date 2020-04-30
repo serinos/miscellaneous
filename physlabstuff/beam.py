@@ -342,7 +342,6 @@ def _mask_drawlines(pad: np.ndarray, dim: int, crop=True):
                 best_midpoint_offset = i
 
         startpoint = midpoint + best_midpoint_offset - dim//2
-        print(startpoint, dim)
         return pad[startpoint:startpoint+dim,0:dim]
     else:
         return pad
