@@ -302,23 +302,48 @@ def _mask_apply(q, config, beam, mask):
 def _mask_drawlines(pad: np.ndarray, dim: int, crop=True):
     # Draws a mask by using the pad repetitively to achieve a square matrix,
     # edges have at least 1 and at most 2 extra pads to ensure proper working of mask_slide()
-    # crop=1 returns cropped matrix to match dim
+    # crop=1 returns cropped matrix to match dim, cropped section is centralized with an
+    # ablated region at the center
     if pad.shape[0] > dim:
         raise DimensionMismatch
-    pad_rat = pad[0:,0].sum()/pad.shape[0]
+    legroom = pad.shape[0]//2
     pad = np.vstack(tuple(pad for i in range((dim//pad.shape[0])+2)))
     pad = np.hstack(tuple(pad for i in range((dim//pad.shape[1])+2)))
+    midpoint = pad.shape[0]//2
     if crop is True:
-        legroom = pad.shape[0] - dim  # Will be used to traverse the matrix to find the best place to crop
-                                      # so that the resulting one is closest in masking percentage
-                                      # Will only consider y axis for pc calculations in _mask_drawlines
-        best = 0
-        score = 1
-        for i in range(legroom):
-            if abs(pad[i:dim+i,0].sum()/dim - pad_rat) < score:
-                score = abs(pad[i:dim+i,0].sum()/dim - pad_rat)
-                best = i
-        return pad[best:dim+best,0:dim]
+        best_midpoint_offset = 0
+        score = 0  # Will traverse upward and downward till there is a 1, then multiply the two
+                   # movement to get a score, max is best for centralization (think of 2*8 vs 5*5)
+        for i in range(-legroom,legroom+1):
+            cursor_fixed = midpoint + i
+            if pad[cursor_fixed,0]==1:
+                continue
+            cursor = cursor_fixed
+            upper = 1
+            while True:
+                cursor += 1
+                if pad[cursor,0]==0:
+                    upper += 1
+                else:
+                    break
+
+            cursor = cursor_fixed
+            lower = 1
+            while True:
+                cursor -= 1
+                if pad[cursor,0]==0:
+                    lower += 1
+                else:
+                    break
+
+            score_check = upper*lower
+            if score_check > score:
+                score = score_check
+                best_midpoint_offset = i
+
+        startpoint = midpoint + best_midpoint_offset - dim//2
+        print(startpoint, dim)
+        return pad[startpoint:startpoint+dim,0:dim]
     else:
         return pad
 
