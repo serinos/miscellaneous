@@ -1,5 +1,5 @@
 """
-Last major change: April 30 2020 - OS
+Last major change: April 30 2020 - Onur Serin
 Numerical Calculation Tool for Laser Beams Masked by Semi-ablated Absorbant Surface
 
 ***Functions:
@@ -13,7 +13,7 @@ Created beams are Gaussian, return type is Beam
 
 -- beam_initfunc(res, length, Ep, w, func)  calculates a np.array matrix with dimensions
 (res*length + 1, res*length + 1) for a beam, can be used with arbitrary math functions passed through func parameter.
-Note that no sanitization is in place. Use beam_initialize() for fast generation of Gaussian beams.
+Note that no sanitization is in place. Use beam_initialize() for fast generation of Gaussian beams
 You may use the variable name "const" in your function instead of (2*Ep/(pi*(w**2)))
 The entry at the center of the matrix stands for (0,0) in x-y, +-1 index shift from center
 stands for +-(1/res) shift in x-y.
@@ -46,6 +46,13 @@ index and resulting beams one by one, use uncropped masks
 Units: Think of x resolution unit as resolving 1/x um, enter w in um
        Defaults: Js=0.00000015 uJ/um2, Ep=0.04 uJ, res=1, a0=0.01725, aS=0.00575, eval threshold of beam=10^-10uJ
 
+TODO: Beams initialized by beam_initfunc() cannot be used with circular masks because of dimension mismatch, fix this.
+      This is caused by the option shape='circles' assuming every beam.matrix.shape to be of even numbers, which is never
+      satisfied for beam_initfunc() unlike beam_initialize()
+TODO: Add a beam_gaustilt() for initializing a gaussian beam that shines on masks in a tilted, elliptical way
+TODO: Add brewster_calc() for calculating the brewster angle for some refractive index values
+      default: n_env = 1, n_material = 1.45 (fused silica, for lambda around 1.2um) which yields 55.4 deg
+TODO: Revise the default values to match those of the empirical setups, maybe make them global and add a toggling func
 """
 
 from math import sqrt
@@ -56,7 +63,7 @@ import matplotlib.pyplot as plt
 
 
 class DimensionMismatch(Exception): pass
-class UnsufficientParameters(Exception): pass
+class InsufficientParameters(Exception): pass
 
 class Beam:
     def __init__(self, res, Ep, w, dim, matrix):
@@ -132,7 +139,7 @@ def beam_initfunc(res=1, length=0, Ep=0.04, w=0, func="0"):
     if w==0 or length==0:
         raise DimensionMismatch
     if func=="0":
-        raise UnsufficientParameters
+        raise InsufficientParameters
 
     w2 = w**2
     const = np.float32(2*Ep/(np.pi * w2))  # Passed funcs might use it
@@ -157,7 +164,7 @@ def mask_initialize(Js=0.00000015, a0=0.01725, aS=0.00575, **kwargs):
         beam = kwargs.pop("beam")
     except:
         print("Parameters not sufficient")
-        raise UnsufficientParameters
+        raise InsufficientParameters
     try:
         crop_flag = kwargs.pop("crop")
     except:
