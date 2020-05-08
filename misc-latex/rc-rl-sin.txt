@@ -4,6 +4,9 @@
 
 \usepackage{tikz}
 \usepackage{circuitikz}
+\usepackage{tkz-euclide}
+\usepackage{pgfplots}
+\usetikzlibrary{arrows.meta}
 
 \begin{document}
 
