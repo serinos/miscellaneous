@@ -52,7 +52,7 @@ TODO: Beams initialized by beam_initfunc() cannot be used with circular masks be
 TODO: Add a beam_gaustilt() for initializing a gaussian beam that shines on masks in a tilted, elliptical way
 TODO: Add brewster_calc() for calculating the brewster angle for some refractive index values
       default: n_env = 1, n_material = 1.45 (fused silica, for lambda around 1.2um) which yields 55.4 deg
-TODO: Revise the default values to match those of the empirical setups, maybe make them global and add a toggling func
+TODO: Refactor calculation intense parts of initialization and mask_apply code to make them multithreaded
 """
 
 from math import sqrt
