@@ -28,6 +28,9 @@ Return type is Mask
 Equation2: Jnew := J - deltaJ where deltaJ := J*(a0 + aS/(1 + J/Js))
 Returns the emergent Beam
 
+-- mask_apply_fast(beam, mask)  Multiprocessing variant of mask_apply()
+Uses all cores simultaneously, returns the emergent Beam after masking
+
 -- integrate_for_energy(beam)  Adds up J values in a beam matrix, returns calculated Ep
 
 -- multi_integrate_for_energy(beamlist)  Returns a list of tuples in format (index, energy)
@@ -37,15 +40,16 @@ Returns the emergent Beam
 -- plot_energy(beamlist)  Plots energy graph of beams in a list
 
 -- mask_slide(beam, mask, stepsX, stepsY)  Slides mask on beam, returns a tuple of beams, use uncropped masks
+May overload the memory
 
--- mask_slide_iterator(beam, mask, stepsX, stepsY)  Slides mask on beam, yields tuples that have
+-- mask_slide_iterator(beam, mask, stepsX, stepsY)  Is a generator, slides mask on beam, yields tuples that have
 index and resulting beams one by one, use uncropped masks
 
 -- mask_pc(mask)  Calculates the percentage of non-ablated graphene region over the totality of a given mask
 
 -- brewster_calc(n_env, n_mat)  Calculates the brewster angle, takes in n_env and n_mat, returns in radians
 
--- beam_inittilt(res, length, Ep, w, deg, is_x)  Returns a Gaussian Beam tilted at some deg(in radian)
+-- beam_inittilt(res, length, Ep, w, deg, is_x)  Returns a Gaussian Beam tilted at some deg(in radians)
 If is_x is True, x-y plane tilts arond y-axis, otherwise tilts around x-axis.
 
 Units: Think of x resolution unit as resolving 1/x um, enter w in um
@@ -289,7 +293,7 @@ def _mask_apply_iter(config, beam, mask):
     beam_c = beam.copy()
     mask_c.matrix = mask_c.matrix[config[0]:(beam_c.dim + config[0]), config[1]:(beam_c.dim+config[1])]
     mask_c.dim = beam_c.dim
-    beam_c = mask_apply(beam_c, mask_c)
+    beam_c = mask_apply_fast(beam_c, mask_c)
     del(mask_c)
     index = config[0] + config[1]
     beam_tuple = (index, beam_c)
@@ -503,3 +507,83 @@ def beam_inittilt(res=1, length=0, Ep=0.04, w=0, deg=1, is_x=True):
     else:
         return beam_initfunc(res, length, Ep, w,\
             func=f"(const*np.exp(-2*(y**2)/({w_over_sin_2}) - 2*(x**2)/({w2})))")
+
+
+def mask_apply_fast(beam: Beam, mask: Mask):
+    if beam.dim != mask.dim:
+        raise DimensionMismatch
+    Js = mask.Js
+    a0 = mask.a0
+    aS = mask.aS
+    dim = beam.dim
+
+    processes = []
+    q = Queue()
+    cpu = cpu_count()
+    
+    unit = dim//(cpu+1)
+    ranger = []
+    returnee = []
+    
+    #Timeout fix for process.join
+    timeout = time()
+    #Sample calculation for retrieving time info
+    sample_matrix = []
+    for i in range(0, unit):  # Traverses y coord
+        line = []
+        for j in range(dim):  # Traverses x coord
+            value = beam.matrix[i][j]
+            if bool(mask.matrix[i][j]) & bool(value):  # Only work on filled cells
+               line.append(value*(1-(a0+(aS/(1+(value/Js))))))
+            else:
+               line.append(value)
+
+        sample_matrix.append(line)
+    returnee.append((0, sample_matrix))
+    #End of calculation
+    timeout = time() - timeout + 0.02
+    del(sample_matrix)
+
+    if cpu == 1:
+        ranger = [(unit, dim)]
+    else:
+        for i in range(1, cpu):
+            ranger.append((unit*i, unit*(i+1)))
+        ranger.append(((cpu)*unit,dim))
+
+    for j in range(cpu):
+        try:
+            reach = ranger.pop()
+        except:
+            break
+        process = Process(target=_mask_apply_fast, args=(q, Js, a0, aS, dim,\
+            beam.matrix, mask.matrix, reach))
+        processes.append(process)
+        process.start()
+    for process in processes:
+        process.join(timeout)
+
+    for i in range(q.qsize()):
+        returnee.append(q.get())
+    returnee.sort()
+    new_matrix = np.vstack(tuple(i[1] for i in returnee))
+    if new_matrix.shape != (dim,dim):
+        print("Error in multiprocessing, maybe try to increase the timeout?")
+
+    return Beam(beam.res, beam.Ep, beam.w, beam.dim, new_matrix)
+
+
+def _mask_apply_fast(q, Js, a0, aS, dim, beam_matrix, mask_matrix, reach):
+    new_matrix = []
+    # Eqn2 will be iterated for cells that are passing through absorbant medium
+    for i in range(reach[0], reach[1]):  # Traverses y coord
+        line = []
+        for j in range(dim):  # Traverses x coord
+            value = beam_matrix[i][j]
+            if bool(mask_matrix[i][j]) & bool(value):  # Only work on filled cells
+               line.append(value*(1-(a0+(aS/(1+(value/Js))))))
+            else:
+               line.append(value)
+
+        new_matrix.append(line)
+    q.put((reach[0], new_matrix))
