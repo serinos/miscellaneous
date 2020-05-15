@@ -13,7 +13,7 @@ Created beams are Gaussian, return type is Beam
 
 -- beam_initfunc(res, length, Ep, w, func)  calculates a np.array matrix with dimensions
 (res*length + 1, res*length + 1) for a beam, can be used with arbitrary math functions passed through func parameter.
-Note that no sanitization is in place. Use beam_initialize() for fast generation of Gaussian beams
+Note that no sanitization is in place. Use beam_initialize() for fast generation of Gaussian beams.
 You may use the variable name "const" in your function instead of (2*Ep/(pi*(w**2)))
 The entry at the center of the matrix stands for (0,0) in x-y, +-1 index shift from center
 stands for +-(1/res) shift in x-y.
@@ -43,15 +43,18 @@ index and resulting beams one by one, use uncropped masks
 
 -- mask_pc(mask)  Calculates the percentage of non-ablated graphene region over the totality of a given mask
 
+-- brewster_calc(n_env, n_mat)  Calculates the brewster angle, takes in n_env and n_mat, returns in radians
+
+-- beam_inittilt(res, length, Ep, w, deg, is_x)  Returns a Gaussian Beam tilted at some deg(in radian)
+If is_x is True, x-y plane tilts arond y-axis, otherwise tilts around x-axis.
+
 Units: Think of x resolution unit as resolving 1/x um, enter w in um
        Defaults: Js=0.00000015 uJ/um2, Ep=0.04 uJ, res=1, a0=0.01725, aS=0.00575, eval threshold of beam=10^-10uJ
+               : n_env=1, n_mat=1.45
 
 TODO: Beams initialized by beam_initfunc() cannot be used with circular masks because of dimension mismatch, fix this.
       This is caused by the option shape='circles' assuming every beam.matrix.shape to be of even numbers, which is never
       satisfied for beam_initfunc() unlike beam_initialize()
-TODO: Add a beam_gaustilt() for initializing a gaussian beam that shines on masks in a tilted, elliptical way
-TODO: Add brewster_calc() for calculating the brewster angle for some refractive index values
-      default: n_env = 1, n_material = 1.45 (fused silica, for lambda around 1.2um) which yields 55.4 deg
 TODO: Refactor calculation intense parts of initialization and mask_apply code to make them multithreaded
 """
 
@@ -485,3 +488,18 @@ def mask_pc(mask: Mask):
        # and divides by total number of entries in its matrix to achieve pc of graphene
        del(mask.res)
        return pc
+
+
+def brewster_calc(n_env=1, n_mat=1.45):
+    return np.arctan(n_mat/n_env)
+
+
+def beam_inittilt(res=1, length=0, Ep=0.04, w=0, deg=1, is_x=True):
+    w2 = str(w**2)
+    w_over_sin_2 = str((w/np.sin(deg))**2)
+    if is_x is True:
+        return beam_initfunc(res, length, Ep, w,\
+            func=f"(const*np.exp(-2*(x**2)/({w_over_sin_2}) - 2*(y**2)/({w2})))")
+    else:
+        return beam_initfunc(res, length, Ep, w,\
+            func=f"(const*np.exp(-2*(y**2)/({w_over_sin_2}) - 2*(x**2)/({w2})))")
