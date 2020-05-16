@@ -4,8 +4,8 @@ set modelines=0               " prevents some exploits
 colorscheme molokai
 
 " set the runtime path to include Vundle and initialize
-" set rtp+=~/.vim/bundle/Vundle.vim
-" call vundle#begin()
+set rtp+=~/.vim/bundle/Vundle.vim
+call vundle#begin()
 
 " Remapping kj to <Esc> for insert mode and some nice stuff
 inoremap kj <Esc>
@@ -50,6 +50,7 @@ set shiftwidth=4
 set softtabstop=4
 set expandtab
 
+
 " Home sweet home
 set encoding=utf-8
 set scrolloff=3
@@ -90,7 +91,14 @@ vnoremap > >gv
 " set formatoptions=qrn1
 " set colorcolumn=80
 
-"Plugin 'file:///home/dandy/.vim/bundle/YouCompleteMe'
-"let g:ycm_global_ycm_extra_conf = '~/.vim/.ycm_extra_conf.py'
 
+" let Vundle manage Vundle, required
+Plugin 'VundleVim/Vundle.vim'
+Plugin 'file:///home/dandy/.vim/bundle/YouCompleteMe'
+Plugin 'file:///home/dandy/.vim/bundle/LaTeXSuite'
+
+let g:ycm_global_ycm_extra_conf= "/home/dandy/.vim/.ycm_extra_conf.py"
+
+" All of your Plugins must be added before the following line
+call vundle#end()            " required
 filetype plugin indent on    " required
