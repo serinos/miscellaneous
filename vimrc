@@ -95,7 +95,8 @@ vnoremap > >gv
 " let Vundle manage Vundle, required
 Plugin 'VundleVim/Vundle.vim'
 Plugin 'file:///home/dandy/.vim/bundle/YouCompleteMe'
-Plugin 'file:///home/dandy/.vim/bundle/LaTeXSuite'
+Plugin 'vim-latex/vim-latex'
+Plugin 'xuhdev/vim-latex-live-preview'  " type :LLPStartPreview to use it
 
 let g:ycm_global_ycm_extra_conf= "/home/dandy/.vim/.ycm_extra_conf.py"
 
