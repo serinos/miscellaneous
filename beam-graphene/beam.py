@@ -59,7 +59,7 @@ Units: Think of x resolution unit as resolving 1/x um, enter w in um
 TODO: Beams initialized by beam_initfunc() cannot be used with circular masks because of dimension mismatch, fix this.
       This is caused by the option shape='circles' assuming every beam.matrix.shape to be of even numbers, which is never
       satisfied for beam_initfunc() unlike beam_initialize()
-TODO: Refactor calculation intense parts of initialization and mask_apply code to make them multithreaded
+TODO: Refactor calculation intense parts of beam initialization to make them multithreaded
 """
 
 from math import sqrt
@@ -500,13 +500,13 @@ def brewster_calc(n_env=1, n_mat=1.45):
 
 def beam_inittilt(res=1, length=0, Ep=0.04, w=0, deg=1, is_x=True):
     w2 = str(w**2)
-    w_over_sin_2 = str((w/np.sin(deg))**2)
+    w_over_cos_2 = str((w/np.cos(deg))**2)
     if is_x is True:
         return beam_initfunc(res, length, Ep, w,\
-            func=f"(const*np.exp(-2*(x**2)/({w_over_sin_2}) - 2*(y**2)/({w2})))")
+            func=f"(const*np.exp(-2*(x**2)/({w_over_cos_2}) - 2*(y**2)/({w2})))")
     else:
         return beam_initfunc(res, length, Ep, w,\
-            func=f"(const*np.exp(-2*(y**2)/({w_over_sin_2}) - 2*(x**2)/({w2})))")
+            func=f"(const*np.exp(-2*(y**2)/({w_over_cos_2}) - 2*(x**2)/({w2})))")
 
 
 def mask_apply_fast(beam: Beam, mask: Mask):
@@ -520,11 +520,11 @@ def mask_apply_fast(beam: Beam, mask: Mask):
     processes = []
     q = Queue()
     cpu = cpu_count()
-    
+
     unit = dim//(cpu+1)
     ranger = []
     returnee = []
-    
+
     #Timeout fix for process.join
     timeout = time()
     #Sample calculation for retrieving time info
