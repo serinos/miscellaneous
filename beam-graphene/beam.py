@@ -14,7 +14,8 @@ Created beams are Gaussian, return type is Beam
 -- beam_initfunc(res, length, Ep, w, func)  calculates a np.array matrix with dimensions
 (res*length + 1, res*length + 1) for a beam, can be used with arbitrary math functions passed through func parameter.
 Note that no sanitization is in place. Use beam_initialize() for fast generation of Gaussian beams.
-You may use the variable name "const" in your function instead of (2*Ep/(pi*(w**2)))
+You may use the variable name "const" in your function instead of (2*Ep/(pi*(w**2))) if you provide some Ep
+Note that actual Ep will probably be off of the value provided, no correction factors are provided for the given function
 The entry at the center of the matrix stands for (0,0) in x-y, +-1 index shift from center
 stands for +-(1/res) shift in x-y.
 Return type is Beam
@@ -501,12 +502,13 @@ def brewster_calc(n_env=1, n_mat=1.45):
 def beam_inittilt(res=1, length=0, Ep=0.04, w=0, deg=1, is_x=True):
     w2 = str(w**2)
     w_over_cos_2 = str((w/np.cos(deg))**2)
+    correction_for_Ep = np.cos(deg)
     if is_x is True:
         return beam_initfunc(res, length, Ep, w,\
-            func=f"(const*np.exp(-2*(x**2)/({w_over_cos_2}) - 2*(y**2)/({w2})))")
+            func=f"(const*correction_for_Ep*np.exp(-2*(x**2)/({w_over_cos_2}) - 2*(y**2)/({w2})))")
     else:
         return beam_initfunc(res, length, Ep, w,\
-            func=f"(const*np.exp(-2*(y**2)/({w_over_cos_2}) - 2*(x**2)/({w2})))")
+            func=f"(const*correction_for_Ep*np.exp(-2*(y**2)/({w_over_cos_2}) - 2*(x**2)/({w2})))")
 
 
 def mask_apply_fast(beam: Beam, mask: Mask):
