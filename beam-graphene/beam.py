@@ -502,13 +502,13 @@ def brewster_calc(n_env=1, n_mat=1.45):
 def beam_inittilt(res=1, length=0, Ep=0.04, w=0, deg=1, is_x=True):
     w2 = str(w**2)
     w_over_cos_2 = str((w/np.cos(deg))**2)
-    correction_for_Ep = np.cos(deg)
+    constant_Ep = np.cos(deg)*(2*Ep/(np.pi*(w**2)))
     if is_x is True:
         return beam_initfunc(res, length, Ep, w,\
-            func=f"(const*correction_for_Ep*np.exp(-2*(x**2)/({w_over_cos_2}) - 2*(y**2)/({w2})))")
+            func=f"({constant_Ep}*np.exp(-2*(x**2)/({w_over_cos_2}) - 2*(y**2)/({w2})))")
     else:
         return beam_initfunc(res, length, Ep, w,\
-            func=f"(const*correction_for_Ep*np.exp(-2*(y**2)/({w_over_cos_2}) - 2*(x**2)/({w2})))")
+            func=f"({constant_Ep}*np.exp(-2*(y**2)/({w_over_cos_2}) - 2*(x**2)/({w2})))")
 
 
 def mask_apply_fast(beam: Beam, mask: Mask):
