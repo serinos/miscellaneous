@@ -1,5 +1,5 @@
 """
-Last major change: April 30 2020 - Onur Serin
+Created by Onur Serin
 Numerical Calculation Tool for Laser Beams Masked by Semi-ablated Absorbant Surface
 
 ***Functions:
