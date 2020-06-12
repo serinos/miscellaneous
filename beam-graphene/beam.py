@@ -1,6 +1,7 @@
 """
-Created by Onur Serin
-Numerical Calculation Tool for Laser Beams Masked by Semi-ablated Absorbant Surface
+Title: Numerical Calculation Tool for Laser Beams Masked by Semi-ablated Absorbant Surface
+Author: Onur Serin
+Last major change: 2020-06-12
 
 ***Functions:
 -- beam_initialize(res, threshold, Ep, w, over_est)  calculates an np.array matrix with I values
@@ -28,9 +29,6 @@ Return type is Mask
 -- mask_apply(beam, mask)  Applies the following eqn:
 Equation2: Jnew := J - deltaJ where deltaJ := J*(a0 + aS/(1 + J/Js))
 Returns the emergent Beam
-
--- mask_apply_fast(beam, mask)  Multiprocessing variant of mask_apply()
-Uses all cores simultaneously, returns the emergent Beam after masking
 
 -- integrate_for_energy(beam)  Adds up J values in a beam matrix, returns calculated Ep
 
@@ -60,10 +58,8 @@ Units: Think of x resolution unit as resolving 1/x um, enter w in um
 TODO: Beams initialized by beam_initfunc() cannot be used with circular masks because of dimension mismatch, fix this.
       This is caused by the option shape='circles' assuming every beam.matrix.shape to be of even numbers, which is never
       satisfied for beam_initfunc() unlike beam_initialize()
-TODO: Refactor calculation intense parts of beam initialization to make them multithreaded
 """
 
-from math import sqrt
 from time import time
 from multiprocessing import Process, Queue, cpu_count
 import numpy as np
@@ -207,7 +203,7 @@ def mask_initialize(Js=0.00000015, a0=0.01725, aS=0.00575, **kwargs):
         for y in range(half_length):
             tmp = []
             for x in range(half_length):
-                r_fixed = sqrt(x**2 + y**2) - half_thickness
+                r_fixed = np.sqrt(x**2 + y**2) - half_thickness
                 if (r_fixed % repet_len) >= digital_width:
                     tmp.append(0)
                 else:
@@ -232,20 +228,12 @@ def mask_apply(beam: Beam, mask: Mask):
     Js = mask.Js
     a0 = mask.a0
     aS = mask.aS
-    new_matrix = []
-    # Eqn2 will be iterated for cells that are passing through absorbant medium
-    for i in range(beam.dim):  # Traverses y coord
-        line = []
-        for j in range(beam.dim):  # Traverses x coord
-            value = beam.matrix[i][j]
-            if bool(mask.matrix[i][j]) & bool(value):  # Only work on filled cells
-               line.append(value*(1-(a0+(aS/(1+(value/Js))))))
-            else:
-               line.append(value)
+    # Eqn2 will be used
+    changed = beam.matrix*mask.matrix
+    unchanged = beam.matrix*((-1)*(mask.matrix - 1))
+    new_matrix = unchanged + changed*(1-(a0+(aS/(1+(changed/Js)))))
 
-        new_matrix.append(line)
-
-    return Beam(beam.res, beam.Ep, beam.w, beam.dim, np.array(new_matrix))
+    return Beam(beam.res, beam.Ep, beam.w, beam.dim, new_matrix)
 
 
 def mask_slide(beam: Beam, mask: Mask, stepsX=0, stepsY=0):  # Pass cropless masks only
@@ -294,7 +282,7 @@ def _mask_apply_iter(config, beam, mask):
     beam_c = beam.copy()
     mask_c.matrix = mask_c.matrix[config[0]:(beam_c.dim + config[0]), config[1]:(beam_c.dim+config[1])]
     mask_c.dim = beam_c.dim
-    beam_c = mask_apply_fast(beam_c, mask_c)
+    beam_c = mask_apply(beam_c, mask_c)
     del(mask_c)
     index = config[0] + config[1]
     beam_tuple = (index, beam_c)
@@ -503,83 +491,3 @@ def beam_inittilt(res=1, length=0, Ep=0.04, w=0, deg=1, is_x=True):
     else:
         return beam_initfunc(res, length, Ep, w,\
             func=f"({constant_Ep}*np.exp(-2*(y**2)/({w_over_cos_2}) - 2*(x**2)/({w2})))")
-
-
-def mask_apply_fast(beam: Beam, mask: Mask):
-    if beam.dim != mask.dim:
-        raise DimensionMismatch
-    Js = mask.Js
-    a0 = mask.a0
-    aS = mask.aS
-    dim = beam.dim
-
-    processes = []
-    q = Queue()
-    cpu = cpu_count()
-
-    unit = dim//(cpu+1)
-    ranger = []
-    returnee = []
-
-    #Timeout fix for process.join
-    timeout = time()
-    #Sample calculation for retrieving time info
-    sample_matrix = []
-    for i in range(0, unit):  # Traverses y coord
-        line = []
-        for j in range(dim):  # Traverses x coord
-            value = beam.matrix[i][j]
-            if bool(mask.matrix[i][j]) & bool(value):  # Only work on filled cells
-               line.append(value*(1-(a0+(aS/(1+(value/Js))))))
-            else:
-               line.append(value)
-
-        sample_matrix.append(line)
-    returnee.append((0, sample_matrix))
-    #End of calculation
-    timeout = time() - timeout + 0.02
-    del(sample_matrix)
-
-    if cpu == 1:
-        ranger = [(unit, dim)]
-    else:
-        for i in range(1, cpu):
-            ranger.append((unit*i, unit*(i+1)))
-        ranger.append(((cpu)*unit,dim))
-
-    for j in range(cpu):
-        try:
-            reach = ranger.pop()
-        except:
-            break
-        process = Process(target=_mask_apply_fast, args=(q, Js, a0, aS, dim,\
-            beam.matrix, mask.matrix, reach))
-        processes.append(process)
-        process.start()
-    for process in processes:
-        process.join(timeout)
-
-    for i in range(q.qsize()):
-        returnee.append(q.get())
-    returnee.sort()
-    new_matrix = np.vstack(tuple(i[1] for i in returnee))
-    if new_matrix.shape != (dim,dim):
-        print("Error in multiprocessing, maybe try to increase the timeout?")
-
-    return Beam(beam.res, beam.Ep, beam.w, beam.dim, new_matrix)
-
-
-def _mask_apply_fast(q, Js, a0, aS, dim, beam_matrix, mask_matrix, reach):
-    new_matrix = []
-    # Eqn2 will be iterated for cells that are passing through absorbant medium
-    for i in range(reach[0], reach[1]):  # Traverses y coord
-        line = []
-        for j in range(dim):  # Traverses x coord
-            value = beam_matrix[i][j]
-            if bool(mask_matrix[i][j]) & bool(value):  # Only work on filled cells
-               line.append(value*(1-(a0+(aS/(1+(value/Js))))))
-            else:
-               line.append(value)
-
-        new_matrix.append(line)
-    q.put((reach[0], new_matrix))
