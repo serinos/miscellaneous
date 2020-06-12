@@ -245,7 +245,7 @@ def mask_apply(beam: Beam, mask: Mask):
 
         new_matrix.append(line)
 
-    return Beam(beam.res, beam.Ep, beam.w, beam.dim, new_matrix)
+    return Beam(beam.res, beam.Ep, beam.w, beam.dim, np.array(new_matrix))
 
 
 def mask_slide(beam: Beam, mask: Mask, stepsX=0, stepsY=0):  # Pass cropless masks only
@@ -370,19 +370,13 @@ def plot_heat(beam: Beam):
 
 def integrate_for_energy(beam: Beam):
     dA = 1 / (beam.res**2)  # dA for integration by adding up squares
-    energy = 0
-    for i in beam.matrix:
-        for j in i:
-            energy += (dA * j)
+    energy = beam.matrix.sum() * dA
     return np.float32(energy)
 
 
 def _integrate_for_energy(q, index, beam):
     dA = 1 / (beam.res**2)
-    energy = 0
-    for i in beam.matrix:
-        for j in i:
-            energy += (dA * j)
+    energy = beam.matrix.sum() * dA
     q.put((index, np.float32(energy)))
 
 
