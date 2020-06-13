@@ -262,7 +262,7 @@ def mask_slide(beam: Beam, mask: Mask, stepsX=0, stepsY=0):  # Pass cropless mas
     mask_c.matrix = mask.matrix[0:beam.dim, 0:beam.dim]
     mask_c.dim = beam.dim
     _ = mask_apply(beam=beam, mask=mask_c)
-    timeout = time() - timeout + 0.1  #  Tweak this if it is too little/too much
+    timeout = time() - timeout + 0.02  #  Tweak this if it is too little/too much
     print(f"Best case: {timeout * ranger} seconds")  #  Not precise at all...
     del(_)
     del(mask_c)
@@ -384,7 +384,7 @@ def multi_integrate_for_energy(beamlist):
     # Timeout fix for process.join, processes will terminate after sufficient time
     timeout = time()
     integrate_for_energy(beam=beamlist[0][1])
-    timeout = time() - timeout + 0.1  #  Tweak this if it is too little/too much
+    timeout = time() - timeout + 0.02  #  Tweak this if it is too little/too much
     print(f"Best case: {timeout * ((len(beamlist)//cpu_count())+1)} seconds")
     ###
     beamlist = beamlist.copy()
