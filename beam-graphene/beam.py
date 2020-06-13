@@ -318,7 +318,7 @@ def _mask_drawlines(pad: np.ndarray, dim: int, crop=True):
     # Draws a mask by using the pad repetitively to achieve a square matrix,
     # edges have at least 1 and at most 2 extra pads to ensure proper working of mask_slide()
     # crop=1 returns cropped matrix to match dim, cropped section is centralized with an
-    # ablated region at the center, which is good to approximate the min loss case
+    # ablated region at the center, which is good for approximating the min loss case
     if pad.shape[0] > dim:
         raise DimensionMismatch
     legroom = pad.shape[0]//2
