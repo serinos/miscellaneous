@@ -29,7 +29,6 @@ Note that actual Ep will probably be off of the value provided, no correction fa
 The entry at the center of the matrix stands for approximately (0,0) in x-y, +-1 index shift from center
 stands for +-(1/res) shift in x-y.
 Return type is Beam
-This function takes more time than the other options, consider using others if suitable
 
 -- mask_initialize(beam, <shape params>, thickness, Js, a0, aS, crop)  outputs mask with
 desired shape for a given beam, for now only straight lines and circles are implemented
