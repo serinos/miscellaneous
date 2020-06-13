@@ -1,9 +1,9 @@
 """
 Title: Numerical Calculation Tool for Laser Beams Masked by Semi-ablated Absorbant Surface
 Author: Onur Serin
-Last major change: 2020-06-12
+Last major change: 2020-06-13
 
-***Functions:
+Functions:
 -- beam_initialize(res, threshold, Ep, w, over_est)  calculates an np.array matrix with I values
 wrt x,y coordinates with desired resolution, calculates only first quadrant
 values under y=x, then extends by symmetry to the rest of cartesian plane
@@ -12,14 +12,24 @@ Dimension of the matrix is determined by threshold value.
 Equation1: J(x,y) = (2*Ep/(pi*(w**2)))*exp((-2*(x**2) - 2*(y**2))/(w**2))
 Created beams are Gaussian, return type is Beam
 
+-- beam_initialize_fast(res, threshold, Ep, w) calculates an np.array matrix with I values
+wrt x,y coordinates with desired resolution, fast implementation of beam_initialize using
+numpy backend, actual Ep values may be more error prone compared to beam_initialize() for
+a given resolution
+
+-- beam_inittilt(res, length, Ep, w, deg, is_x)  Returns a Gaussian Beam tilted at some deg(in radians)
+If is_x is True, x-y plane tilts arond y-axis, otherwise tilts around x-axis.
+This function is also handy for drawing non-tilted beams with matrices with definitive lengths
+
 -- beam_initfunc(res, length, Ep, w, func)  calculates a np.array matrix with dimensions
 (res*length + 1, res*length + 1) for a beam, can be used with arbitrary math functions passed through func parameter.
 Note that no sanitization is in place. Use beam_initialize() for fast generation of Gaussian beams.
 You may use the variable name "const" in your function instead of (2*Ep/(pi*(w**2))) if you provide some Ep
 Note that actual Ep will probably be off of the value provided, no correction factors are provided for the given function
-The entry at the center of the matrix stands for (0,0) in x-y, +-1 index shift from center
+The entry at the center of the matrix stands for approximately (0,0) in x-y, +-1 index shift from center
 stands for +-(1/res) shift in x-y.
 Return type is Beam
+This function takes more time than the other options, consider using others if suitable
 
 -- mask_initialize(beam, <shape params>, thickness, Js, a0, aS, crop)  outputs mask with
 desired shape for a given beam, for now only straight lines and circles are implemented
@@ -44,20 +54,22 @@ May overload the memory
 -- mask_slide_iterator(beam, mask, stepsX, stepsY)  Is a generator, slides mask on beam, yields tuples that have
 index and resulting beams one by one, use uncropped masks
 
--- mask_pc(mask)  Calculates the percentage of non-ablated graphene region over the totality of a given mask
+-- mask_pc_calc(mask)  Calculates the percentage of non-ablated graphene region over the totality of a given mask
 
 -- brewster_calc(n_env, n_mat)  Calculates the brewster angle, takes in n_env and n_mat, returns in radians
 
--- beam_inittilt(res, length, Ep, w, deg, is_x)  Returns a Gaussian Beam tilted at some deg(in radians)
-If is_x is True, x-y plane tilts arond y-axis, otherwise tilts around x-axis.
+-- loss_calc(E_in, E_out, coeff, percent)  Returns loss by comparing E_in and E_out, multiplies by coeff if given,
+which is useful for multiplying by 2, which approximates the experimental result as the beam passes twice through a mask.
+As for percent, if overwritten as True, the function returns loss in %.
+
 
 Units: Think of x resolution unit as resolving 1/x um, enter w in um
        Defaults: Js=0.00000015 uJ/um2, Ep=0.04 uJ, res=1, a0=0.01725, aS=0.00575, eval threshold of beam=10^-10uJ
                : n_env=1, n_mat=1.45
 
-TODO: Beams initialized by beam_initfunc() cannot be used with circular masks because of dimension mismatch, fix this.
-      This is caused by the option shape='circles' assuming every beam.matrix.shape to be of even numbers, which is never
-      satisfied for beam_initfunc() unlike beam_initialize()
+Known issues: --Beams initialized by beam_initfunc() cannot be used with circular masks because of dimension mismatch, fix this.
+              This is caused by the option shape='circles' assuming every beam.matrix.shape to be of even numbers, which is never
+              satisfied for beam_initfunc() unlike beam_initialize()
 """
 
 from time import time
@@ -103,6 +115,7 @@ def beam_initialize(res=1, threshold=(10**-10), Ep=0.04, w=0, over_est=True):
     #  variable "cut", uses Eqn1 to find x and assign int wrt res. (y=0)
     #  For cut, over_est=True always to ensure comparability with over_est=False matrices
     cut = int(np.ceil(res*np.sqrt(((w2)*np.log(2*Ep/(np.pi*(w2)*threshold)))/2)))
+    print(cut)
     #  Iterate cut times for first line, then use sin function to truncate
     #  after threshold and fill in zeros, will traverse the first quadrant
     #  below y=x and used for filling above y=x,first quad data is put in a list
@@ -148,18 +161,18 @@ def beam_initfunc(res=1, length=0, Ep=0.04, w=0, func="0"):
     w2 = w**2
     const = np.float32(2*Ep/(np.pi * w2))  # Passed funcs might use it
 
-    total_matrix = []
-    edge_neg = -length/2
-    edge_pos = (1/res)-edge_neg
-    step = 1/res
-    for y in np.arange(edge_neg,edge_pos,step):
-        x_traversal = []
-        for x in np.arange(edge_neg,edge_pos,step):
-            x_traversal.append(eval(func))
-        total_matrix.append(x_traversal)
+    datapoint_count = res*length
+    half_length = length/2
 
-    total_matrix = np.array(total_matrix)  # Mind (y,x) convention
-    return Beam(res, Ep, w, total_matrix.shape[0], total_matrix)
+    init_array = (np.linspace(-half_length,half_length, datapoint_count))
+    x = init_array
+    y = init_array.copy()
+    y.shape = (y.shape[0],1)
+    x = np.vstack(tuple(x for i in range(x.shape[0])))
+    y = np.hstack(tuple(y for i in range(y.shape[0])))
+
+    resultant = eval(func)
+    return Beam(res, Ep, w, resultant.shape[0], resultant)
 
 
 def mask_initialize(Js=0.00000015, a0=0.01725, aS=0.00575, **kwargs):
@@ -250,7 +263,7 @@ def mask_slide(beam: Beam, mask: Mask, stepsX=0, stepsY=0):  # Pass cropless mas
     mask_c.matrix = mask.matrix[0:beam.dim, 0:beam.dim]
     mask_c.dim = beam.dim
     _ = mask_apply(beam=beam, mask=mask_c)
-    timeout = time() - timeout + 0.2  #  Tweak this if it is too little/too much
+    timeout = time() - timeout + 0.1  #  Tweak this if it is too little/too much
     print(f"Best case: {timeout * ranger} seconds")  #  Not precise at all...
     del(_)
     del(mask_c)
@@ -306,7 +319,7 @@ def _mask_drawlines(pad: np.ndarray, dim: int, crop=True):
     # Draws a mask by using the pad repetitively to achieve a square matrix,
     # edges have at least 1 and at most 2 extra pads to ensure proper working of mask_slide()
     # crop=1 returns cropped matrix to match dim, cropped section is centralized with an
-    # ablated region at the center
+    # ablated region at the center, which is good to approximate the min loss case
     if pad.shape[0] > dim:
         raise DimensionMismatch
     legroom = pad.shape[0]//2
@@ -372,7 +385,7 @@ def multi_integrate_for_energy(beamlist):
     # Timeout fix for process.join, processes will terminate after sufficient time
     timeout = time()
     integrate_for_energy(beam=beamlist[0][1])
-    timeout = time() - timeout + 0.2  #  Tweak this if it is too little/too much
+    timeout = time() - timeout + 0.1  #  Tweak this if it is too little/too much
     print(f"Best case: {timeout * ((len(beamlist)//cpu_count())+1)} seconds")
     ###
     beamlist = beamlist.copy()
@@ -469,7 +482,7 @@ def _quadrant_expander(half_length: int, first_quad: list):
     return total_matrix
 
 
-def mask_pc(mask: Mask):
+def mask_pc_calc(mask: Mask):
        mask.res = 1  # integrate_for_energy() requires res value
        pc = 100*integrate_for_energy(mask)/(mask.dim**2)  # Adds up 1s in the mask,
        # and divides by total number of entries in its matrix to achieve pc of graphene
@@ -482,12 +495,50 @@ def brewster_calc(n_env=1, n_mat=1.45):
 
 
 def beam_inittilt(res=1, length=0, Ep=0.04, w=0, deg=1, is_x=True):
-    w2 = str(w**2)
-    w_over_cos_2 = str((w/np.cos(deg))**2)
+    if w==0:
+        raise DimensionMismatch
     constant_Ep = np.cos(deg)*(2*Ep/(np.pi*(w**2)))
+    minus_2_over_w2 = -2/(w**2)
+    half_length = length/2
+    datapoint_count = res*length
+    init_array = (np.linspace(-half_length,half_length, datapoint_count))**2
     if is_x is True:
-        return beam_initfunc(res, length, Ep, w,\
-            func=f"({constant_Ep}*np.exp(-2*(x**2)/({w_over_cos_2}) - 2*(y**2)/({w2})))")
+        x2_cos2deg = init_array * ((np.cos(deg))**2)
+        y2 = init_array
+        y2.shape = (y2.shape[0],1)
+        resultant = x2_cos2deg + y2
     else:
-        return beam_initfunc(res, length, Ep, w,\
-            func=f"({constant_Ep}*np.exp(-2*(y**2)/({w_over_cos_2}) - 2*(x**2)/({w2})))")
+        x2 = init_array
+        y2_cos2deg = init_array * ((np.cos(deg))**2)
+        y2_cos2deg.shape = (y2_cos2deg.shape[0],1)
+        resultant = x2 + y2_cos2deg
+
+    resultant = constant_Ep*np.exp(minus_2_over_w2*resultant)
+    return Beam(res,Ep,w,resultant.shape[0], resultant)
+
+
+def beam_initialize_fast(res=1, threshold=(10**-10), Ep=0.04, w=0):
+    if w==0:
+        raise DimensionMismatch
+    w2 = w**2
+    #  By threshold, calculate the number of points to be traversed
+    constant_Ep = 2*Ep/(np.pi*(w**2))
+    minus_2_over_w2 = -2/(w**2)
+    datapoint_count = int(np.ceil(res*np.sqrt(((w2)*np.log(2*Ep/(np.pi*(w2)*threshold)))/2))*2)
+    half_length = (datapoint_count//2)//res
+
+    init_array = (np.linspace(-half_length,half_length, datapoint_count))**2
+    x2 = init_array
+    y2 = init_array.copy()
+    y2.shape = (y2.shape[0],1)
+    resultant = x2 + y2
+    resultant = constant_Ep*np.exp(minus_2_over_w2*resultant)
+
+    return Beam(res, Ep, w, resultant.shape[0], resultant)
+
+
+def loss_calc(E_in, E_out, coeff, percent=False):
+    if percent is False:
+        return coeff*(E_in-E_out)/E_in
+    else:
+        return coeff*100*(E_in-E_out)/E_in
