@@ -114,7 +114,6 @@ def beam_initialize(res=1, threshold=(10**-10), Ep=0.04, w=0, over_est=True):
     #  variable "cut", uses Eqn1 to find x and assign int wrt res. (y=0)
     #  For cut, over_est=True always to ensure comparability with over_est=False matrices
     cut = int(np.ceil(res*np.sqrt(((w2)*np.log(2*Ep/(np.pi*(w2)*threshold)))/2)))
-    print(cut)
     #  Iterate cut times for first line, then use sin function to truncate
     #  after threshold and fill in zeros, will traverse the first quadrant
     #  below y=x and used for filling above y=x,first quad data is put in a list
