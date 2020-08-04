@@ -362,7 +362,10 @@ def _mask_drawlines(pad: np.ndarray, dim: int, crop=True):
 
 
 def plot_heat(beam: Beam):
-    plt.imshow(beam.matrix, cmap='viridis')
+    high = beam.dim/(2*beam.res)
+    low = -1*high
+    extent = [low, high, low, high]
+    plt.imshow(beam.matrix, cmap='hot', extent=extent)
     plt.colorbar()
     plt.show()
 
