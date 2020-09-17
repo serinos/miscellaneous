@@ -1,7 +1,7 @@
 """
 Title: Numerical Calculation Tool for Laser Beams Masked by Semi-ablated Absorbant Surface
 Author: Onur Serin
-Last major change: 2020-06-13
+Last major change: 2020-09-17
 
 Functions:
 -- beam_initialize(res, threshold, Ep, w, over_est)  calculates an np.array matrix with I values
@@ -60,6 +60,10 @@ index and resulting beams one by one, use uncropped masks
 -- loss_calc(E_in, E_out, coeff, percent)  Returns loss by comparing E_in and E_out, multiplies by coeff if given,
 which is useful for multiplying by 2, which approximates the experimental result as the beam passes twice through a mask.
 As for percent, if overwritten as True, the function returns loss in %.
+
+-- variation_checker(beam, width_config, plot)  Calculates % variation in energy as given masks are translated
+in front of a beam for each 1um step one by one, and calculates the % change in loss over mean loss, width_config is a list
+with entries (graphene_width, ablation_width). If plot=True, then plots two figures, one for each calculation.
 
 
 Units: Think of x resolution unit as resolving 1/x um, enter w in um
@@ -543,3 +547,42 @@ def loss_calc(E_in, E_out, coeff, percent=False):
         return coeff*(E_in-E_out)/E_in
     else:
         return coeff*100*(E_in-E_out)/E_in
+
+
+def variation_checker(beam, width_config, plot=False):  # width_config is a list with entries (graphene_width, ablation_width)
+    results = []  # results list will contain energy integral values(wrt offset 1um per step) of each config
+    Einput_actual = integrate_for_energy(beam)
+
+    for i in range(len(width_config)):
+        mm = mask_initialize(beam=beam, shape='lines', width=width_config[i][0], thickness=width_config[i][1], crop=False)
+        stepsize = int(np.ceil(width_config[i][0] + width_config[i][1]))
+        itrtr = mask_slide_iterator(beam=beam,mask=mm,stepsY=stepsize)  # Slider slides graphene layer about 1um at a time
+        tmp = []
+        for j in itrtr:
+            k = integrate_for_energy(j[1])
+            tmp.append(k)
+            del(j)
+        results.append(tmp)
+        del(mm)
+        del(itrtr)
+
+    dE_E = []  # dE_E will hold loss% values calculated from the results list
+    for i in range(len(width_config)):
+        dE_E.append([(100*(Einput_actual - j)/Einput_actual) for j in results[i]])
+    
+    if plot == True:
+        for i in range(len(width_config)):
+            plt.plot(dE_E[i], label=f"{(width_config[i][0],width_config[i][1])} um")
+        plt.ylabel('Loss (%)')
+        plt.xlabel('Sliding Offset (um)')
+        plt.legend(loc = 'best')
+        plt.show()
+
+    dE_E_diff = [100*(max(i)-min(i))/((sum(i))/len(i)) for i in dE_E]
+    if plot == True:
+        plt.plot(dE_E_diff,'o')
+        plt.ylabel(r'% Change in Loss over Mean Loss')
+        plt.xlabel('Configuration No')
+        plt.show()
+    
+    return dE_E, dE_E_diff
