@@ -369,8 +369,10 @@ def plot_heat(beam: Beam):
     high = beam.dim/(2*beam.res)
     low = -1*high
     extent = [low, high, low, high]
-    plt.imshow(beam.matrix, cmap='hot', extent=extent)
-    plt.colorbar()
+    plt.imshow(beam.matrix, cmap='inferno', extent=extent)
+    plt.xlabel('Distance (μm)')
+    plt.ylabel('Distance (μm)')
+    plt.colorbar(label="Energy Density (μJ*μm^-2)")
     plt.show()
 
 
