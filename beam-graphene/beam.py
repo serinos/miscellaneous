@@ -1,7 +1,6 @@
 """
-Title: Numerical Calculation Tool for Laser Beams Masked by Semi-ablated Absorbant Surface
+Title: Simulation Toolkit for Laser Beams Masked by Semi-ablated Saturable Absorbant Surfaces
 Author: Onur Serin
-Last major change: 2020-09-17
 
 Functions:
 -- beam_initialize(res, threshold, Ep, w, over_est)  calculates an np.array matrix with I values
