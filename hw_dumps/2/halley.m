@@ -1,7 +1,8 @@
 % Problem 6b
 
-% halley(fun, dfun, x_init) implements the Newton-Raphson method to solve
+% halley(fun, dfun, ddfun, x_init) implements Halley's method to solve
 % fun(x)=0. x_init is the initial guess, dfun() is the derivative of fun()
+% ddfun() second derivative of fun()
 
 function root = halley(fun, dfun, ddfun, x_init)
 root = x_init;
