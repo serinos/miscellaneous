@@ -9,7 +9,7 @@ function y = lambertwCustom(x, method)
 funShifted = @(z)(z.*exp(z)-x);
 funDeriv = @(z)((z+1).*exp(z));
 funDeriv2 = @(z)((z+2).*exp(z));
-x_init=1;
+x_init = log(exp(1)*(x<=1) + (x>1).*x);  % x=ye^y --> lnx =y+lny, lnx approx y for large y
 
 if nargin>1 && method=='h'
     y = halley(funShifted, funDeriv, funDeriv2, x_init);
