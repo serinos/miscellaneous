@@ -1,5 +1,5 @@
 '''
-Problem 9  # TODO: PART C STILL NOT IMPLEMENTED
+Problem 9
 Functions:
 
 --newton(fun, dfun, x_init) implements the Newton-Raphson method to solve
